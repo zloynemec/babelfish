@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+.env
+.DS_Store
+.idea/
+.vscode/
+dist/
+build/
+*.egg-info/
+
+# Translation models and ML runtime artifacts are installed outside the repository.
+*.argosmodel
+*.onnx
+*.safetensors
+*.ses
+/models/
+/model-cache/

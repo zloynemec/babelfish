@@ -1,0 +1,256 @@
+openapi: 3.1.0
+info:
+  title: Local Translation Service
+  version: 0.1.0
+  description: Local pluggable machine translation HTTP API.
+servers:
+  - url: http://localhost:8000
+paths:
+  /v1/translate:
+    post:
+      summary: Translate text
+      operationId: translateText
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TranslateRequest'
+            examples:
+              minimal:
+                value:
+                  text: The spacecraft entered orbit.
+                  target_language: ru
+              explicitTranslator:
+                value:
+                  text: The spacecraft entered orbit.
+                  target_language: ru
+                  source_language: en
+                  translator: argos
+                  translator_params: {}
+      responses:
+        '200':
+          description: Translation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranslateResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '504':
+          $ref: '#/components/responses/Error504'
+  /v1/translators:
+    get:
+      summary: List registered translators
+      operationId: listTranslators
+      responses:
+        '200':
+          description: Translator registry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranslatorListResponse'
+  /health/live:
+    get:
+      summary: Liveness probe
+      operationId: healthLive
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: ok
+  /health/ready:
+    get:
+      summary: Readiness probe
+      operationId: healthReady
+      responses:
+        '200':
+          description: Default translator is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, default_translator]
+                properties:
+                  status:
+                    type: string
+                    const: ready
+                  default_translator:
+                    type: string
+        '503':
+          $ref: '#/components/responses/Error503'
+components:
+  schemas:
+    LanguageCode:
+      type: string
+      pattern: '^[a-z]{2,3}(-[A-Za-z0-9]+)*$'
+      examples: [en, ru]
+    TranslateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - text
+        - target_language
+      properties:
+        text:
+          type: string
+          minLength: 1
+          description: Source text. Runtime maximum is configured by MAX_TEXT_LENGTH.
+        target_language:
+          $ref: '#/components/schemas/LanguageCode'
+        source_language:
+          allOf:
+            - $ref: '#/components/schemas/LanguageCode'
+          description: Optional. Uses DEFAULT_SOURCE_LANGUAGE when omitted.
+        translator:
+          type: string
+          minLength: 1
+          description: Optional provider name. Uses DEFAULT_TRANSLATOR when omitted.
+        translator_params:
+          type: object
+          additionalProperties: true
+          default: {}
+          description: Provider-specific parameters validated by the selected provider.
+    TranslateResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - translation
+        - source_language
+        - target_language
+        - translator
+        - metadata
+      properties:
+        translation:
+          type: string
+        source_language:
+          $ref: '#/components/schemas/LanguageCode'
+        target_language:
+          $ref: '#/components/schemas/LanguageCode'
+        translator:
+          type: string
+        metadata:
+          type: object
+          required: [duration_ms]
+          additionalProperties: true
+          properties:
+            duration_ms:
+              type: integer
+              minimum: 0
+    LanguagePair:
+      type: object
+      additionalProperties: false
+      required: [source, target]
+      properties:
+        source:
+          $ref: '#/components/schemas/LanguageCode'
+        target:
+          $ref: '#/components/schemas/LanguageCode'
+    TranslatorDescriptor:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - ready
+        - supported_language_pairs
+      properties:
+        name:
+          type: string
+        ready:
+          type: boolean
+        supported_language_pairs:
+          oneOf:
+            - type: array
+              items:
+                $ref: '#/components/schemas/LanguagePair'
+            - type: 'null'
+    TranslatorListResponse:
+      type: object
+      additionalProperties: false
+      required: [translators, default_translator]
+      properties:
+        translators:
+          type: array
+          items:
+            $ref: '#/components/schemas/TranslatorDescriptor'
+        default_translator:
+          type: string
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, details, request_id]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+            request_id:
+              type: string
+  responses:
+    Error400:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Error404:
+      description: Unknown translator
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Error413:
+      description: Text too large
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Error422:
+      description: Invalid translator parameters or unsupported language pair
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Error500:
+      description: Translation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Error503:
+      description: Translator unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Error504:
+      description: Translation timeout
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
