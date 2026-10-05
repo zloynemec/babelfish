@@ -39,6 +39,20 @@
 Результат: минимальный request реально переводит English -> Russian локально, без
 платного или квотируемого API перевода. Загрузка моделей в runtime допустима.
 
+## Phase 2.1 — Marian/CTranslate2 provider
+
+- [x] добавить прямые зависимости CTranslate2, Transformers и SentencePiece;
+- [x] реализовать `MarianProvider` за существующей provider abstraction;
+- [x] обнаруживать модели и языковые пары через manifest;
+- [x] лениво загружать и кэшировать CTranslate2 runtime;
+- [x] нормализовать ошибки и отклонять unknown `translator_params`;
+- [x] добавить скрипт загрузки и конвертации MarianMT/OPUS-MT;
+- [x] хранить модели вне репозитория;
+- [x] добавить unit и model-gated integration tests.
+
+Результат: клиент может выбрать `"translator": "marian"`, не меняя остальные
+обязательные поля API.
+
 ## Phase 3 — эксплуатационный минимум
 
 - [ ] structured logging;
@@ -62,10 +76,6 @@
 - [ ] финальная сверка docs/OpenAPI/implementation.
 
 ## После MVP — только отдельными задачами
-
-Приоритетный кандидат №2: Marian/OPUS-MT через CTranslate2.
-
-Для его добавления нельзя менять обязательные поля `/v1/translate`. Нужно только зарегистрировать новый provider, например `marian`, и описать его допустимые `translator_params`.
 
 Другие будущие направления:
 

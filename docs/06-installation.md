@@ -69,6 +69,9 @@ cp .env.example .env
 | `DEFAULT_SOURCE_LANGUAGE` | `en` | Исходный язык по умолчанию |
 | `MAX_TEXT_LENGTH` | `20000` | Максимальная длина текста |
 | `TRANSLATION_TIMEOUT_SECONDS` | `30` | Timeout одного перевода |
+| `MARIAN_MODELS_DIR` | `~/.local/share/babelfish/marian` | Каталог Marian-моделей |
+| `MARIAN_DEVICE` | `cpu` | Устройство CTranslate2: `cpu`, `cuda`, `auto` |
+| `MARIAN_COMPUTE_TYPE` | `int8` | Тип вычислений CTranslate2 |
 
 ## 4. Подключение Argos Translate
 
@@ -89,7 +92,19 @@ python -c "from argostranslate import settings; print(settings.package_data_dir)
 Подробности об установке других пар и работе без сети описаны в
 [инструкции по языкам Argos](07-argos-languages.md).
 
-## 5. Запуск
+## 5. Подключение Marian/CTranslate2
+
+Provider `marian` устанавливается вместе с проектом и регистрируется автоматически.
+Скачайте и конвертируйте модель `en -> ru`:
+
+```bash
+python scripts/install_marian_model.py --from en --to ru
+```
+
+Выберите его в запросе полем `"translator": "marian"`. Полная инструкция:
+[Marian/CTranslate2](08-marian.md).
+
+## 6. Запуск
 
 ```bash
 uvicorn translation_service.main:app --host 0.0.0.0 --port 8000
@@ -107,15 +122,16 @@ curl -X POST http://localhost:8000/v1/translate \
 
 Интерактивная документация Scalar: <http://localhost:8000/docs>.
 
-## 6. Проверки для разработчика
+## 7. Проверки для разработчика
 
 ```bash
 ruff check .
 pytest
 ```
 
-Argos integration test автоматически пропускается, если модель `en -> ru` не
-установлена. Тесты API не скачивают модели и используют fake provider.
+Argos и Marian integration tests автоматически пропускаются, если соответствующая
+модель `en -> ru` не установлена. Тесты API не скачивают модели и используют fake
+provider.
 
 ## Обновление проекта
 

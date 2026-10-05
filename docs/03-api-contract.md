@@ -4,6 +4,64 @@ Base URL примера: `http://localhost:8000`.
 
 Версия API включена в path: `/v1/...`.
 
+## POST `/v1/annotate`
+
+Создаёт аннотацию на русском языке в 2–3 предложениях. Внешний ИИ-провайдер
+получает подготовленный текст. Запрос должен содержать **ровно одно** из полей
+`url`, `html`, `text`:
+
+```json
+{"url":"https://example.org/article"}
+```
+
+```json
+{"html":"<main><p>Article content.</p></main>","annotator":"iishko"}
+```
+
+```json
+{"text":"Article content.","annotator_params":{}}
+```
+
+`url` допускает только публичные HTTP(S) ресурсы с `text/html` или `text/plain`.
+`html` очищается от разметки, скриптов и служебных элементов. `text` передаётся
+модели без изменения; при превышении лимита возвращается ошибка. Поля
+`annotator` (default `DEFAULT_ANNOTATOR=iishko`) и `annotator_params` (default
+`{}`) необязательны. Параметры валидирует выбранный provider. Default модель
+ИИШКО — `qwen3.8-flash`.
+Значение `annotator: "qwen_local"` выбирает локальный Qwen3-4B Q4_K_M через
+llama.cpp. Адрес и имя модели задаются на сервере переменными
+`QWEN_LOCAL_BASE_URL` и `QWEN_LOCAL_MODEL`; `annotator_params` пока должен быть
+пустым для обоих провайдеров.
+
+Ответ `200`:
+
+```json
+{
+  "annotation": "Статья описывает исследование. Авторы приводят основные выводы.",
+  "language": "ru",
+  "annotator": "iishko",
+  "metadata": {"duration_ms": 850, "truncated": false}
+}
+```
+
+`metadata.truncated=true` означает, что для URL/HTML использована только часть
+длинного извлечённого текста. Возможные ошибки в едином envelope:
+`invalid_request` (400), `url_not_allowed` (403), `unknown_annotator` (404),
+`content_too_large` (413), `unsupported_content_type` (415),
+`content_not_extractable` и `invalid_annotator_params` (422),
+`content_fetch_failed` и `annotation_failed` (502), `annotator_unavailable`
+(503), `annotation_timeout` (504).
+
+## GET `/v1/annotators`
+
+Возвращает зарегистрированных аннотаторов и их готовность по конфигурации:
+
+```json
+{"annotators":[{"name":"iishko","ready":true},{"name":"qwen_local","ready":true}],"default_annotator":"iishko"}
+```
+
+`/health/ready` продолжает отражать готовность default переводчика.
+
 ## 1. POST `/v1/translate`
 
 Перевод текста.
@@ -80,6 +138,11 @@ Base URL примера: `http://localhost:8000`.
       "supported_language_pairs": [
         {"source": "en", "target": "ru"}
       ]
+    },
+    {
+      "name": "marian",
+      "ready": false,
+      "supported_language_pairs": []
     }
   ],
   "default_translator": "argos"

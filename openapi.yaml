@@ -6,6 +6,61 @@ info:
 servers:
   - url: http://localhost:8000
 paths:
+  /v1/annotate:
+    post:
+      summary: Annotate content
+      operationId: annotateContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnnotateRequest'
+            examples:
+              url:
+                value: {url: 'https://example.org/article'}
+              html:
+                value: {html: '<main><p>Article content.</p></main>'}
+              text:
+                value: {text: 'Article content.'}
+              localQwen:
+                value: {text: 'Article content.', annotator: qwen_local}
+      responses:
+        '200':
+          description: Annotation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnotateResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '415':
+          $ref: '#/components/responses/Error415'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '502':
+          $ref: '#/components/responses/Error502'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '504':
+          $ref: '#/components/responses/Error504'
+  /v1/annotators:
+    get:
+      summary: List registered annotators
+      operationId: listAnnotators
+      responses:
+        '200':
+          description: Annotator registry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnotatorListResponse'
   /v1/translate:
     post:
       summary: Translate text
@@ -27,6 +82,13 @@ paths:
                   target_language: ru
                   source_language: en
                   translator: argos
+                  translator_params: {}
+              marianTranslator:
+                value:
+                  text: A collection of media links about air quality research.
+                  target_language: ru
+                  source_language: en
+                  translator: marian
                   translator_params: {}
       responses:
         '200':
@@ -98,6 +160,67 @@ paths:
           $ref: '#/components/responses/Error503'
 components:
   schemas:
+    AnnotateRequest:
+      type: object
+      additionalProperties: false
+      description: Exactly one of url, html, or text must be provided.
+      oneOf:
+        - required: [url]
+        - required: [html]
+        - required: [text]
+      properties:
+        url:
+          type: string
+          description: Public HTTP(S) URL.
+        html:
+          type: string
+          description: HTML cleaned before annotation.
+        text:
+          type: string
+          description: Text passed unchanged to the annotator.
+        annotator:
+          type: string
+          description: Uses DEFAULT_ANNOTATOR when omitted. Built-in values are iishko and qwen_local.
+        annotator_params:
+          type: object
+          additionalProperties: true
+          default: {}
+    AnnotateResponse:
+      type: object
+      additionalProperties: false
+      required: [annotation, language, annotator, metadata]
+      properties:
+        annotation:
+          type: string
+        language:
+          type: string
+          const: ru
+        annotator:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: false
+          required: [duration_ms, truncated]
+          properties:
+            duration_ms: {type: integer, minimum: 0}
+            truncated: {type: boolean}
+    AnnotatorDescriptor:
+      type: object
+      additionalProperties: false
+      required: [name, ready]
+      properties:
+        name: {type: string}
+        ready: {type: boolean}
+    AnnotatorListResponse:
+      type: object
+      additionalProperties: false
+      required: [annotators, default_annotator]
+      properties:
+        annotators:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnnotatorDescriptor'
+        default_annotator: {type: string}
     LanguageCode:
       type: string
       pattern: '^[a-z]{2,3}(-[A-Za-z0-9]+)*$'
@@ -218,20 +341,32 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
+    Error403:
+      description: URL is not allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
     Error404:
-      description: Unknown translator
+      description: Unknown provider
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
     Error413:
-      description: Text too large
+      description: Content too large
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Error415:
+      description: Unsupported content type
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
     Error422:
-      description: Invalid translator parameters or unsupported language pair
+      description: Invalid parameters or unsupported content
       content:
         application/json:
           schema:
@@ -242,14 +377,20 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
+    Error502:
+      description: Fetch or annotation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
     Error503:
-      description: Translator unavailable
+      description: Provider unavailable
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
     Error504:
-      description: Translation timeout
+      description: Operation timeout
       content:
         application/json:
           schema:

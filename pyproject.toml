@@ -11,16 +11,22 @@ requires-python = ">=3.12"
 dependencies = [
     "anyio>=4.6,<5",
     "argostranslate>=1.11,<2",
+    "ctranslate2>=4.8,<5",
+    "dnspython>=2.7,<3",
     "fastapi>=0.115,<1",
+    "huggingface-hub>=0.34,<1",
+    "httpx>=0.27,<1",
     "pydantic>=2.9,<3",
     "pydantic-settings>=2.5,<3",
     "scalar-fastapi>=1.8,<2",
+    "sentencepiece>=0.2,<1",
+    "torch>=2.1,<3",
+    "transformers>=4.48,<5",
     "uvicorn>=0.30,<1",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "httpx>=0.27,<1",
     "pytest>=8.3,<9",
     "pyyaml>=6,<7",
     "ruff>=0.8,<1",
@@ -34,6 +40,7 @@ addopts = "-ra"
 testpaths = ["tests"]
 markers = [
     "argos_integration: requires a locally installed Argos translation model",
+    "marian_integration: requires a locally installed Marian/CTranslate2 model",
 ]
 
 [tool.ruff]

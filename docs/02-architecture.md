@@ -2,6 +2,21 @@
 
 ## 1. Общая схема
 
+Для отдельного метода `/v1/annotate` используется параллельная цепочка:
+
+```text
+HTTP route -> AnnotationService -> ContentPreparer -> AnnotatorRegistry
+                                           |                 |
+                                           +-- URL/HTML/text +-- IishkoProvider
+                                                             +-- QwenLocalProvider -> llama.cpp
+```
+
+`AnnotationService` подготавливает содержимое и вызывает provider; `IishkoProvider`
+отвечает за внешний API модели, `QwenLocalProvider` — за локальный llama.cpp сервер.
+Реестр аннотаторов отделён от реестра
+переводчиков. Текст из `/v1/annotate` разрешено отправлять внешнему provider;
+ограничение локального inference для `/v1/translate` сохраняется.
+
 ```text
 Consumer
    |
@@ -15,10 +30,9 @@ TranslationService
    +---- TranslatorRegistry ----+
    |                            |
    v                            v
-ArgosProvider          Future providers
-                      - Marian/CTranslate2
-                      - Ollama
-                      - Bergamot adapter
+ArgosProvider          MarianProvider          Future providers
+                                              - Ollama
+                                              - Bergamot adapter
 ```
 
 Ключевой принцип: transport/API слой ничего не знает о Python API конкретного переводчика.
@@ -139,7 +153,36 @@ Runtime-загрузка из публичного model repository также �
 ограничений по числу переводов. Ни URL загрузки, ни её параметры не должны содержать
 пользовательский текст.
 
-## 4. Translator-specific params
+## 4. Marian/CTranslate2 provider
+
+`MarianProvider`:
+
+- использует модели MarianMT/OPUS-MT, заранее конвертированные в формат CTranslate2;
+- обнаруживает модели по manifest-файлам в `MARIAN_MODELS_DIR`;
+- загружает конкретную языковую пару лениво при первом переводе;
+- кэширует runtime в памяти процесса;
+- использует Hugging Face tokenizer только из локального каталога модели;
+- выполняет inference через `ctranslate2.Translator` без сетевых запросов.
+
+Структура установленной модели:
+
+```text
+MARIAN_MODELS_DIR/
+└── en-ru/
+    ├── babelfish-model.json
+    ├── model/
+    │   ├── config.json
+    │   ├── model.bin
+    │   └── ...
+    └── tokenizer/
+        └── ...
+```
+
+Установщик `scripts/install_marian_model.py` загружает Transformers-модель,
+сохраняет tokenizer и конвертирует веса с настраиваемой quantization. Эти файлы
+находятся вне Git-репозитория.
+
+## 5. Translator-specific params
 
 Публичное поле:
 
@@ -160,9 +203,11 @@ HTTP JSON
 
 Для Argos в первой версии допускается не поддерживать никаких дополнительных параметров. Тогда `{}` корректен, а неизвестные ключи должны возвращать `invalid_translator_params`.
 
-Будущий Marian provider сможет, например, принимать внутренние параметры beam/quantization только если они осмысленны для выбранной реализации. Не следует заранее включать такие поля в общий request schema.
+В первой версии Marian provider, как и Argos, принимает только пустой объект `{}`.
+Compute type задаётся конфигурацией процесса, а quantization — при установке модели.
+Не следует заранее включать эти параметры в общий request schema.
 
-## 5. Ошибки
+## 6. Ошибки
 
 Внутренние exception types:
 
@@ -177,7 +222,7 @@ TranslationFailedError
 
 API слой преобразует их в единый error envelope.
 
-## 6. Liveness и readiness
+## 7. Liveness и readiness
 
 ### `/health/live`
 
@@ -193,7 +238,7 @@ API слой преобразует их в единый error envelope.
 
 Это позволяет контейнеру стартовать даже до установки модели, сохраняя корректную семантику readiness.
 
-## 7. Синхронный inference
+## 8. Синхронный inference
 
 Большинство локальных движков выполняют синхронный CPU/GPU inference.
 
@@ -203,13 +248,13 @@ FastAPI route может быть `async`, но provider call не должен 
 
 Если измерения покажут, что отдельные движки плохо масштабируются в threads или требуют process isolation, это решается на provider/application уровне без изменения внешнего API.
 
-## 8. Timeout
+## 9. Timeout
 
 Application service должен применять общий configurable timeout.
 
 Важно: отмена await по timeout не всегда физически прерывает CPU inference в worker thread. В MVP timeout прежде всего ограничивает время ожидания клиента и возвращает согласованную ошибку. Если жёсткое завершение inference станет обязательным, provider следует вынести в отдельный worker process.
 
-## 9. Логирование
+## 10. Логирование
 
 Рекомендуемый structured log event для успешного запроса:
 
@@ -227,11 +272,10 @@ Application service должен применять общий configurable time
 
 Не логировать полный пользовательский текст по умолчанию.
 
-## 10. Будущее масштабирование
+## 11. Будущее масштабирование
 
 Без изменения `/v1/translate` можно добавить:
 
-- Marian/CTranslate2 provider;
 - Ollama provider;
 - automatic language detection перед provider selection;
 - fallback policy;

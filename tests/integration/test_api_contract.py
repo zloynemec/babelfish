@@ -9,6 +9,7 @@ from translation_service.domain.models import ProviderTranslationRequest
 from translation_service.main import create_app
 from translation_service.providers.argos import ArgosProvider
 from translation_service.providers.fake import FakeTranslatorProvider
+from translation_service.providers.marian import MarianProvider
 from translation_service.services.registry import TranslatorRegistry
 
 
@@ -208,12 +209,13 @@ async def test_argos_without_models_is_reported_as_unavailable() -> None:
     assert_error(translation, 503, "translator_unavailable")
 
 
-def test_default_application_registers_argos_provider() -> None:
+def test_default_application_registers_production_providers() -> None:
     application = create_app()
 
     providers = application.state.registry.list()
-    assert len(providers) == 1
+    assert len(providers) == 2
     assert isinstance(providers[0], ArgosProvider)
+    assert isinstance(providers[1], MarianProvider)
 
 
 @pytest.mark.anyio

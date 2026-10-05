@@ -47,6 +47,15 @@ def test_generated_openapi_contains_documented_contract() -> None:
         "type": "object",
     }
 
+    annotate_schema = schema["components"]["schemas"]["AnnotateRequest"]
+    assert annotate_schema["additionalProperties"] is False
+    assert annotate_schema["oneOf"] == [
+        {"required": ["url"]},
+        {"required": ["html"]},
+        {"required": ["text"]},
+    ]
+    assert annotate_schema["properties"]["annotator_params"]["default"] == {}
+
     response_schema = schema["components"]["schemas"]["TranslateResponse"]
     assert set(response_schema["required"]) == {
         "translation",

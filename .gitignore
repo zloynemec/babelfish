@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+node_modules
 .env
 .DS_Store
 .idea/
@@ -18,3 +19,4 @@ build/
 *.ses
 /models/
 /model-cache/
+/marian-models/

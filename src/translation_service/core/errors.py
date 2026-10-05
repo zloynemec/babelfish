@@ -66,3 +66,63 @@ class TranslationFailedError(ApplicationError):
     code = "translation_failed"
     status_code = 500
     default_message = "Translation failed"
+
+
+class UrlNotAllowedError(ApplicationError):
+    code = "url_not_allowed"
+    status_code = 403
+    default_message = "URL is not allowed"
+
+
+class ContentTooLargeError(ApplicationError):
+    code = "content_too_large"
+    status_code = 413
+    default_message = "Content exceeds the configured maximum length"
+
+
+class UnsupportedContentTypeError(ApplicationError):
+    code = "unsupported_content_type"
+    status_code = 415
+    default_message = "Content type is not supported"
+
+
+class ContentNotExtractableError(ApplicationError):
+    code = "content_not_extractable"
+    status_code = 422
+    default_message = "Content has no extractable text"
+
+
+class InvalidAnnotatorParamsError(ApplicationError):
+    code = "invalid_annotator_params"
+    status_code = 422
+    default_message = "Annotator parameters are invalid"
+
+
+class UnknownAnnotatorError(ApplicationError):
+    code = "unknown_annotator"
+    status_code = 404
+    default_message = "Annotator is not registered"
+
+
+class ContentFetchFailedError(ApplicationError):
+    code = "content_fetch_failed"
+    status_code = 502
+    default_message = "Content could not be fetched"
+
+
+class AnnotationFailedError(ApplicationError):
+    code = "annotation_failed"
+    status_code = 502
+    default_message = "Annotation failed"
+
+
+class AnnotatorUnavailableError(ApplicationError):
+    code = "annotator_unavailable"
+    status_code = 503
+    default_message = "Annotator is unavailable"
+
+
+class AnnotationTimeoutError(ApplicationError):
+    code = "annotation_timeout"
+    status_code = 504
+    default_message = "Annotation timed out"
