@@ -15,7 +15,7 @@ from translation_service.core.workers import WorkerPool
 from translation_service.domain.provider import TranslatorProvider
 from translation_service.services.registry import TranslatorRegistry
 
-router = APIRouter(prefix="/v1", tags=["translators"])
+router = APIRouter(prefix="/v1", tags=["translation"])
 
 
 def _describe_provider(provider: TranslatorProvider) -> TranslatorDescriptor:

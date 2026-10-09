@@ -22,7 +22,15 @@ def test_generated_openapi_contains_documented_contract() -> None:
         for method, documented_operation in documented_path.items():
             generated_operation = schema["paths"][path][method]
             assert generated_operation["operationId"] == documented_operation["operationId"]
+            assert generated_operation["tags"] == documented_operation["tags"]
             assert set(generated_operation["responses"]) == set(documented_operation["responses"])
+
+    for tag, operation_path, registry_path in (
+        ("translation", "/v1/translate", "/v1/translators"),
+        ("annotation", "/v1/annotate", "/v1/annotators"),
+    ):
+        assert schema["paths"][operation_path]["post"]["tags"] == [tag]
+        assert schema["paths"][registry_path]["get"]["tags"] == [tag]
 
     translate = schema["paths"]["/v1/translate"]["post"]
     assert translate["operationId"] == "translateText"

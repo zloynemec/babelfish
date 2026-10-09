@@ -4,6 +4,9 @@ Base URL примера: `http://localhost:8000`.
 
 Версия API включена в path: `/v1/...`.
 
+В OpenAPI и Scalar методы `/v1/translate` и `/v1/translators` объединены тегом
+`translation`, а `/v1/annotate` и `/v1/annotators` — тегом `annotation`.
+
 Для всех HTTP endpoints размер body ограничен `MAX_REQUEST_BODY_BYTES`
 (default 16 000 000 байт). Лимит проверяется до разбора JSON и действует также
 без `Content-Length`. Превышение возвращает `413 request_body_too_large`
