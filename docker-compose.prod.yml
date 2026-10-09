@@ -1,0 +1,86 @@
+name: focus-hive-site-babelfish
+
+services:
+  babelfish:
+    image: focus-hive-site-babelfish:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: "8000"
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      UVICORN_LOG_LEVEL: ${UVICORN_LOG_LEVEL:-info}
+      DEFAULT_TRANSLATOR: ${DEFAULT_TRANSLATOR:-argos}
+      DEFAULT_SOURCE_LANGUAGE: ${DEFAULT_SOURCE_LANGUAGE:-en}
+      MAX_TEXT_LENGTH: ${MAX_TEXT_LENGTH:-20000}
+      MAX_REQUEST_BODY_BYTES: ${MAX_REQUEST_BODY_BYTES:-16000000}
+      MAX_CONCURRENT_OPERATIONS: ${MAX_CONCURRENT_OPERATIONS:-4}
+      TRANSLATION_TIMEOUT_SECONDS: ${TRANSLATION_TIMEOUT_SECONDS:-30}
+      MARIAN_MODELS_DIR: /data/marian
+      MARIAN_DEVICE: cpu
+      MARIAN_COMPUTE_TYPE: ${MARIAN_COMPUTE_TYPE:-int8}
+      ARGOS_INTRA_THREADS: ${INFERENCE_THREADS:-2}
+      OMP_NUM_THREADS: ${INFERENCE_THREADS:-2}
+      DEFAULT_ANNOTATOR: ${DEFAULT_ANNOTATOR:-iishko}
+      IISHKO_API_KEY: ${IISHKO_API_KEY:-}
+      IISHKO_BASE_URL: ${IISHKO_BASE_URL:-https://api.reformboss.com/v1}
+      IISHKO_MODEL: ${IISHKO_MODEL:-qwen3.8-flash}
+      QWEN_LOCAL_BASE_URL: ${QWEN_LOCAL_BASE_URL:-http://127.0.0.1:8081/v1}
+      QWEN_LOCAL_MODEL: ${QWEN_LOCAL_MODEL:-qwen3-4b}
+      ANNOTATION_MAX_INPUT_CHARS: ${ANNOTATION_MAX_INPUT_CHARS:-2000000}
+      ANNOTATION_MAX_TEXT_CHARS: ${ANNOTATION_MAX_TEXT_CHARS:-20000}
+      ANNOTATION_MAX_DOWNLOAD_BYTES: ${ANNOTATION_MAX_DOWNLOAD_BYTES:-2000000}
+      ANNOTATION_FETCH_TIMEOUT_SECONDS: ${ANNOTATION_FETCH_TIMEOUT_SECONDS:-10}
+      ANNOTATION_DNS_SERVER: ${ANNOTATION_DNS_SERVER:-}
+      ANNOTATION_PROVIDER_TIMEOUT_SECONDS: ${ANNOTATION_PROVIDER_TIMEOUT_SECONDS:-90}
+      ANNOTATION_TIMEOUT_SECONDS: ${ANNOTATION_TIMEOUT_SECONDS:-100}
+    volumes:
+      - /apps/focus-hive-site-babelfish/data:/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 120s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=512m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cpus: ${APP_CPUS:-2}
+    mem_limit: ${APP_MEMORY:-4g}
+    pids_limit: 256
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3).close()"
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "16m"
+        max-file: "4"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - "traefik.http.routers.focus-hive-site-babelfish.rule=Host(`${SITE_DOMAIN:-babelfish.linktool.ru}`)"
+      - traefik.http.routers.focus-hive-site-babelfish.entrypoints=https
+      - traefik.http.routers.focus-hive-site-babelfish.tls.certresolver=letsencrypt
+      - traefik.http.routers.focus-hive-site-babelfish.observability.accesslogs=false
+      - traefik.http.routers.focus-hive-site-babelfish.service=focus-hive-site-babelfish
+      - traefik.http.services.focus-hive-site-babelfish.loadbalancer.server.port=8000
+      - org.opencontainers.image.source=https://github.com/zloynemec/babelfish
+      - org.opencontainers.image.revision=${DEPLOY_REVISION:-unknown}
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    external: true

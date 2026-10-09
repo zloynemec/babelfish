@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     default_translator: str = "argos"
     default_source_language: str = "en"
     max_text_length: int = Field(default=20_000, ge=1)
+    max_request_body_bytes: int = Field(default=16_000_000, ge=1)
+    max_concurrent_operations: int = Field(default=4, ge=1)
     translation_timeout_seconds: float = Field(default=30, gt=0)
     marian_models_dir: Path = Field(
         default_factory=lambda: Path.home() / ".local" / "share" / "babelfish" / "marian"

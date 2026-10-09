@@ -6,6 +6,7 @@ import pytest
 
 from translation_service.core.errors import (
     InvalidTranslatorParamsError,
+    TextTooLargeError,
     TranslationFailedError,
     TranslatorUnavailableError,
     UnsupportedLanguagePairError,
@@ -172,3 +173,13 @@ def test_runtime_translation_failure_is_normalized(tmp_path: Path) -> None:
     with pytest.raises(TranslationFailedError) as error:
         provider.translate(request())
     assert str(tmp_path) not in error.value.details.values()
+
+
+def test_runtime_token_limit_preserves_public_error(tmp_path: Path) -> None:
+    provider = MarianProvider(
+        tmp_path,
+        model_discovery=lambda: [model_spec(tmp_path)],
+        runtime_loader=lambda model: StubRuntime(error=TextTooLargeError()),
+    )
+    with pytest.raises(TextTooLargeError):
+        provider.translate(request())

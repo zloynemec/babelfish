@@ -1,6 +1,7 @@
 from fastapi import Request
 
 from translation_service.core.config import Settings
+from translation_service.core.workers import WorkerPool
 from translation_service.services.annotation import AnnotationService
 from translation_service.services.annotator_registry import AnnotatorRegistry
 from translation_service.services.registry import TranslatorRegistry
@@ -9,6 +10,10 @@ from translation_service.services.translation import TranslationService
 
 def get_settings(request: Request) -> Settings:
     return request.app.state.settings
+
+
+def get_workers(request: Request) -> WorkerPool:
+    return request.app.state.workers
 
 
 def get_registry(request: Request) -> TranslatorRegistry:

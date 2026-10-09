@@ -1,5 +1,6 @@
 import re
 from collections.abc import Mapping
+from copy import copy
 from time import perf_counter
 from typing import Any
 
@@ -14,6 +15,7 @@ from translation_service.core.errors import (
     ContentNotExtractableError,
     ContentTooLargeError,
 )
+from translation_service.core.workers import WorkerPool
 from translation_service.domain.annotation import ProviderAnnotationRequest
 from translation_service.services.annotator_registry import AnnotatorRegistry
 from translation_service.services.content import SafePageFetcher, extract_html_text
@@ -28,14 +30,22 @@ class AnnotationService:
         registry: AnnotatorRegistry,
         settings: Settings,
         fetcher: SafePageFetcher | None = None,
+        *,
+        workers: WorkerPool | None = None,
     ) -> None:
         self._registry = registry
         self._settings = settings
+        self._workers = workers or WorkerPool(settings.max_concurrent_operations)
         self._fetcher = fetcher or SafePageFetcher(
             timeout_seconds=settings.annotation_fetch_timeout_seconds,
             max_bytes=settings.annotation_max_download_bytes,
             dns_server=settings.annotation_dns_server,
         )
+
+    def with_workers(self, workers: WorkerPool) -> "AnnotationService":
+        service = copy(self)
+        service._workers = workers
+        return service
 
     async def annotate(
         self,
@@ -49,20 +59,22 @@ class AnnotationService:
         provider = self._registry.get(annotator or self._settings.default_annotator)
         provider_name = self._registry.normalize_name(provider.name)
         started = perf_counter()
+
+        def invoke() -> tuple[str, bool]:
+            prepared, truncated = self._prepare(url=url, html=html, text=text)
+            anyio.from_thread.check_cancelled()
+            if not provider.health().ready:
+                raise AnnotatorUnavailableError(details={"annotator": provider_name})
+            anyio.from_thread.check_cancelled()
+            result = provider.annotate(
+                ProviderAnnotationRequest(text=prepared, params=annotator_params or {})
+            )
+            return result.annotation, truncated
+
         try:
             with anyio.fail_after(self._settings.annotation_timeout_seconds):
-                prepared, truncated = await anyio.to_thread.run_sync(
-                    lambda: self._prepare(url=url, html=html, text=text),
-                    abandon_on_cancel=True,
-                )
-                if not provider.health().ready:
-                    raise AnnotatorUnavailableError(details={"annotator": provider_name})
-                result = await anyio.to_thread.run_sync(
-                    provider.annotate,
-                    ProviderAnnotationRequest(text=prepared, params=annotator_params or {}),
-                    abandon_on_cancel=True,
-                )
-            annotation = result.annotation.strip()
+                annotation, truncated = await self._workers.run(invoke)
+            annotation = annotation.strip()
             countable = _ABBREVIATION.sub("", annotation)
             if len(_SENTENCE_END.findall(countable)) not in (2, 3):
                 raise AnnotationFailedError(details={"annotator": provider_name})

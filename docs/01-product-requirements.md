@@ -129,11 +129,20 @@ API должен позволять получить список зарегис
 
 Предлагаемый default: 20 000 Unicode characters.
 
+HTTP body ограничивается до разбора JSON через `MAX_REQUEST_BODY_BYTES`
+(default 16 000 000 байт), включая вложенные параметры и неизвестные поля.
+Превышение возвращает `413 request_body_too_large`.
+
 ### NFR-005. Timeout
 
 Максимальное время одного перевода должно быть конфигурируемым.
 
 Предлагаемый default: 30 секунд.
+
+Timeout включает ожидание worker и проверки provider. Одновременно выполняется
+не более `MAX_CONCURRENT_OPERATIONS` синхронных операций (default 4) на экземпляр
+приложения, включая аннотирование и проверки готовности. Операция после timeout
+продолжает занимать слот до фактического завершения.
 
 ### NFR-006. Независимость от платных и квотируемых сервисов
 
@@ -174,6 +183,8 @@ LOG_LEVEL=INFO
 DEFAULT_TRANSLATOR=argos
 DEFAULT_SOURCE_LANGUAGE=en
 MAX_TEXT_LENGTH=20000
+MAX_REQUEST_BODY_BYTES=16000000
+MAX_CONCURRENT_OPERATIONS=4
 TRANSLATION_TIMEOUT_SECONDS=30
 MARIAN_MODELS_DIR=~/.local/share/babelfish/marian
 MARIAN_DEVICE=cpu

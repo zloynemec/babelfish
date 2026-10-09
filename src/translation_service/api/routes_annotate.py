@@ -1,11 +1,13 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+import anyio
+from fastapi import APIRouter, Depends, Request
 
 from translation_service.api.dependencies import (
     get_annotation_service,
     get_annotator_registry,
     get_settings,
+    get_workers,
 )
 from translation_service.api.models import (
     ANNOTATION_ERROR_RESPONSES,
@@ -15,6 +17,7 @@ from translation_service.api.models import (
     AnnotatorListResponse,
 )
 from translation_service.core.config import Settings
+from translation_service.core.workers import WorkerPool
 from translation_service.services.annotation import AnnotationService
 from translation_service.services.annotator_registry import AnnotatorRegistry
 
@@ -31,7 +34,17 @@ router = APIRouter(prefix="/v1", tags=["annotation"])
 async def annotate_content(
     request: AnnotateRequest,
     service: Annotated[AnnotationService, Depends(get_annotation_service)],
+    http_request: Request,
 ) -> AnnotateResponse:
+    http_request.state.operation = {
+        "annotator": (
+            request.annotator or http_request.app.state.settings.default_annotator
+        ).strip().lower()[:64],
+        "input_kind": (
+            "url" if request.url is not None else "html" if request.html is not None else "text"
+        ),
+        "text_length": len(request.text) if request.text is not None else None,
+    }
     result = await service.annotate(
         url=request.url,
         html=request.html,
@@ -51,11 +64,13 @@ async def annotate_content(
 async def list_annotators(
     registry: Annotated[AnnotatorRegistry, Depends(get_annotator_registry)],
     settings: Annotated[Settings, Depends(get_settings)],
+    workers: Annotated[WorkerPool, Depends(get_workers)],
 ) -> AnnotatorListResponse:
     descriptors: list[AnnotatorDescriptor] = []
     for provider in registry.list():
         try:
-            ready = provider.health().ready
+            with anyio.fail_after(settings.annotation_timeout_seconds):
+                ready = (await workers.run(provider.health)).ready
         except Exception:
             ready = False
         descriptors.append(

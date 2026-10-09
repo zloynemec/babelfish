@@ -13,6 +13,8 @@ def test_config_defaults() -> None:
     assert settings.default_translator == "argos"
     assert settings.default_source_language == "en"
     assert settings.max_text_length == 20_000
+    assert settings.max_request_body_bytes == 16_000_000
+    assert settings.max_concurrent_operations == 4
     assert settings.translation_timeout_seconds == 30
     assert settings.marian_models_dir.name == "marian"
     assert settings.marian_device == "cpu"

@@ -164,6 +164,11 @@ Runtime-загрузка из публичного model repository также �
 - использует Hugging Face tokenizer только из локального каталога модели;
 - выполняет inference через `ctranslate2.Translator` без сетевых запросов.
 
+Вход ограничен токенным лимитом tokenizer, но не более 1024 токенов, включая
+служебные токены. Превышение возвращает `413 text_too_large` без усечения.
+Автоматическое усечение CTranslate2 отключено. Генерация ограничена 1024 токенами;
+ответ без EOS отклоняется как `500 translation_failed`.
+
 Структура установленной модели:
 
 ```text
@@ -246,11 +251,18 @@ FastAPI route может быть `async`, но provider call не должен 
 
 Для MVP использовать простой thread offload, например `anyio.to_thread.run_sync`.
 
+Application services и HTTP health/list endpoints используют общий `WorkerPool`.
+Лимит `MAX_CONCURRENT_OPERATIONS` удерживается до завершения worker, даже после
+отмены ожидания. Проверки `health()`/`capabilities()` также выполняются в worker.
+Отменённый запрос, который ещё не начал работу, не запускается позднее.
+
 Если измерения покажут, что отдельные движки плохо масштабируются в threads или требуют process isolation, это решается на provider/application уровне без изменения внешнего API.
 
 ## 9. Timeout
 
 Application service должен применять общий configurable timeout.
+
+Он включает ожидание свободного слота, проверки готовности и inference.
 
 Важно: отмена await по timeout не всегда физически прерывает CPU inference в worker thread. В MVP timeout прежде всего ограничивает время ожидания клиента и возвращает согласованную ошибку. Если жёсткое завершение inference станет обязательным, provider следует вынести в отдельный worker process.
 

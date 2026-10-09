@@ -2,7 +2,10 @@ openapi: 3.1.0
 info:
   title: Local Translation Service
   version: 0.1.0
-  description: Local pluggable machine translation HTTP API.
+  description: >-
+    Local pluggable machine translation HTTP API. All HTTP bodies are limited by
+    MAX_REQUEST_BODY_BYTES (default 16000000 bytes) before JSON parsing; exceeding
+    this limit returns 413 request_body_too_large.
 servers:
   - url: http://localhost:8000
 paths:
@@ -55,6 +58,8 @@ paths:
       summary: List registered annotators
       operationId: listAnnotators
       responses:
+        '413':
+          $ref: '#/components/responses/Error413'
         '200':
           description: Annotator registry
           content:
@@ -116,6 +121,8 @@ paths:
       summary: List registered translators
       operationId: listTranslators
       responses:
+        '413':
+          $ref: '#/components/responses/Error413'
         '200':
           description: Translator registry
           content:
@@ -127,6 +134,8 @@ paths:
       summary: Liveness probe
       operationId: healthLive
       responses:
+        '413':
+          $ref: '#/components/responses/Error413'
         '200':
           description: Process is alive
           content:
@@ -143,6 +152,8 @@ paths:
       summary: Readiness probe
       operationId: healthReady
       responses:
+        '413':
+          $ref: '#/components/responses/Error413'
         '200':
           description: Default translator is ready
           content:
@@ -235,7 +246,11 @@ components:
         text:
           type: string
           minLength: 1
-          description: Source text. Runtime maximum is configured by MAX_TEXT_LENGTH.
+          description: >-
+            Source text. Runtime maximum is configured by MAX_TEXT_LENGTH. Marian
+            additionally limits input to the tokenizer model_max_length, capped at
+            1024 tokens including special tokens; exceeding it returns 413 text_too_large.
+            Incomplete Marian generation returns 500 translation_failed.
         target_language:
           $ref: '#/components/schemas/LanguageCode'
         source_language:
@@ -354,7 +369,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
     Error413:
-      description: Content too large
+      description: Content, Marian tokenized input, or HTTP body exceeds its limit
       content:
         application/json:
           schema:

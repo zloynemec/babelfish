@@ -68,6 +68,8 @@ cp .env.example .env
 | `DEFAULT_TRANSLATOR` | `argos` | Provider по умолчанию |
 | `DEFAULT_SOURCE_LANGUAGE` | `en` | Исходный язык по умолчанию |
 | `MAX_TEXT_LENGTH` | `20000` | Максимальная длина текста |
+| `MAX_REQUEST_BODY_BYTES` | `16000000` | Максимальный HTTP body до разбора JSON |
+| `MAX_CONCURRENT_OPERATIONS` | `4` | Число одновременно работающих синхронных операций |
 | `TRANSLATION_TIMEOUT_SECONDS` | `30` | Timeout одного перевода |
 | `MARIAN_MODELS_DIR` | `~/.local/share/babelfish/marian` | Каталог Marian-моделей |
 | `MARIAN_DEVICE` | `cpu` | Устройство CTranslate2: `cpu`, `cuda`, `auto` |

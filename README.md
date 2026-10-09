@@ -126,6 +126,22 @@ Content-Type: application/json
 
 Все значения должны быть настраиваемыми через environment variables.
 
+`MAX_REQUEST_BODY_BYTES=16000000` ограничивает HTTP body до разбора JSON.
+`MAX_CONCURRENT_OPERATIONS=4` ограничивает одновременно работающие синхронные
+операции, включая проверки провайдеров. Работа после ответа `504` занимает слот
+до завершения. Marian отклоняет вход сверх токенного лимита и незавершённый
+перевод; длинный текст нужно разделить на более короткие запросы.
+
+После таймаута уже начатая синхронная операция может завершиться, но следующий
+этап (проверка provider или inference) не запускается. Все сервисы приложения,
+включая внедрённый `AnnotationService`, используют общий лимит операций.
+
+Сервис пишет JSON-записи HTTP-операций в logger `uvicorn.error.translation_service`
+(в production — stderr Uvicorn): request id, статус, код ошибки, длительность,
+provider и метаданные перевода. Текст, перевод, HTML, URL, query string и параметры
+provider в эти записи не включаются.
+Идентификаторы provider и языков в журнале ограничены 64 символами.
+
 ## API documentation
 
 После запуска сервиса интерактивная документация Scalar доступна по адресу
@@ -145,6 +161,11 @@ uvicorn translation_service.main:app --host 0.0.0.0 --port 8000
 ```
 
 Полная инструкция для Linux, macOS и Windows: [установка и запуск](docs/06-installation.md).
+
+Для публикации на hive через существующий Traefik подготовлены `Dockerfile`,
+`docker-compose.prod.yml` и `deploy.prod.sh`. Домен: `babelfish.linktool.ru`.
+Настройка окружения, установка моделей и команды:
+[публикация на hive](docs/10-hive-deployment.md).
 
 ## Argos Translate
 
@@ -211,6 +232,7 @@ quantization и хранится вне Git-репозитория. Подроб
 - [Подключение языков Argos](docs/07-argos-languages.md)
 - [Marian/CTranslate2](docs/08-marian.md)
 - [Аннотирование](docs/09-annotation-proposal.md)
+- [Публикация на hive](docs/10-hive-deployment.md)
 - [OpenAPI](openapi.yaml)
 - [Инструкции для Codex](AGENTS.md)
 

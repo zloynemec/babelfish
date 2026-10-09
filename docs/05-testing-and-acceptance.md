@@ -142,6 +142,21 @@ runtime-загрузки в production.
 
 ## 5. Security/robustness checks MVP
 
+Регрессионные проверки P1 выполняются без моделей и внешних запросов:
+
+- размер body проверяется до JSON validation, с Content-Length, без него и с
+  заниженным значением; точная граница разрешена;
+- медленные provider health checks не блокируют liveness;
+- timeout включает проверки готовности и ожидание worker;
+- abandoned worker удерживает слот до завершения, отменённый ожидающий запрос
+  не начинает работу позднее;
+- после timeout подготовки или provider checks последующий inference не запускается;
+- внедрённый AnnotationService использует общий лимит приложения;
+- HTTP-журнал содержит request id, статус, длительность и результат для успеха,
+  validation errors, 413, 503, 504 и provider failure, без текста и query string;
+- Marian сохраняет весь допустимый вход, отклоняет превышение токенного лимита
+  и результат без EOS.
+
 Хотя авторизации нет:
 
 - traceback не попадает в response;

@@ -7,7 +7,9 @@ from threading import Lock
 from typing import Protocol, cast
 
 from translation_service.core.errors import (
+    ApplicationError,
     InvalidTranslatorParamsError,
+    TextTooLargeError,
     TranslationFailedError,
     TranslatorUnavailableError,
     UnsupportedLanguagePairError,
@@ -90,18 +92,34 @@ class CTranslate2MarianRuntime:
             spec.tokenizer_path,
             local_files_only=True,
         )
+        self._max_input_tokens = min(self._tokenizer.model_max_length, 1024)
 
     def translate(self, text: str) -> str:
         token_ids = self._tokenizer.encode(text)
+        if len(token_ids) > self._max_input_tokens:
+            raise TextTooLargeError(
+                "Text exceeds Marian token limit",
+                details={
+                    "translator": "marian",
+                    "max_input_tokens": self._max_input_tokens,
+                    "actual_tokens": len(token_ids),
+                },
+            )
         source_tokens = self._tokenizer.convert_ids_to_tokens(token_ids)
         if not isinstance(source_tokens, list):
             raise RuntimeError("Marian tokenizer returned an invalid token sequence")
 
-        batches = self._translator.translate_batch([source_tokens])
+        batches = self._translator.translate_batch(
+            [source_tokens], max_input_length=0, max_decoding_length=1024, return_end_token=True
+        )
         if not batches or not batches[0].hypotheses:
             raise RuntimeError("CTranslate2 returned no translation hypotheses")
 
         target_tokens = batches[0].hypotheses[0]
+        if not target_tokens or target_tokens[-1] != self._tokenizer.eos_token:
+            raise TranslationFailedError(
+                "Marian translation did not reach end of sequence", details={"translator": "marian"}
+            )
         target_ids = self._tokenizer.convert_tokens_to_ids(target_tokens)
         return cast(
             str,
@@ -173,6 +191,8 @@ class MarianProvider:
 
         try:
             translation = runtime.translate(request.text)
+        except ApplicationError:
+            raise
         except Exception:
             raise TranslationFailedError(details={"translator": self.name}) from None
 

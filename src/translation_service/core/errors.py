@@ -32,6 +32,12 @@ class TextTooLargeError(ApplicationError):
     default_message = "Text exceeds the configured maximum length"
 
 
+class RequestBodyTooLargeError(ApplicationError):
+    code = "request_body_too_large"
+    status_code = 413
+    default_message = "Request body exceeds the configured maximum size"
+
+
 class UnknownTranslatorError(ApplicationError):
     code = "unknown_translator"
     status_code = 404

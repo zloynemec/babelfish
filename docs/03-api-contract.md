@@ -4,6 +4,11 @@ Base URL примера: `http://localhost:8000`.
 
 Версия API включена в path: `/v1/...`.
 
+Для всех HTTP endpoints размер body ограничен `MAX_REQUEST_BODY_BYTES`
+(default 16 000 000 байт). Лимит проверяется до разбора JSON и действует также
+без `Content-Length`. Превышение возвращает `413 request_body_too_large`
+в общем error envelope с `details.max_request_body_bytes`.
+
 ## POST `/v1/annotate`
 
 Создаёт аннотацию на русском языке в 2–3 предложениях. Внешний ИИ-провайдер
@@ -212,6 +217,7 @@ llama.cpp. Адрес и имя модели задаются на сервер�
 |---:|---|---|
 | 400 | `invalid_request` | Семантически некорректный запрос |
 | 413 | `text_too_large` | `text` превышает configured limit |
+| 413 | `request_body_too_large` | HTTP body превышает байтовый лимит до разбора JSON |
 | 422 | `invalid_translator_params` | Параметры provider некорректны |
 | 404 | `unknown_translator` | Неизвестный `translator` |
 | 422 | `unsupported_language_pair` | Provider не поддерживает пару |
@@ -231,6 +237,18 @@ FastAPI validation errors также следует привести к согл
 - максимальная длина определяется `MAX_TEXT_LENGTH`.
 
 Не следует автоматически `strip()` сам переводимый текст перед передачей provider, чтобы не менять контент клиента. Проверка пустоты может выполняться через `text.strip()`.
+
+Marian дополнительно проверяет токенный лимит tokenizer (не более 1024 токенов,
+включая служебные). Более длинный вход возвращает `413 text_too_large` с
+`details.translator`, `details.max_input_tokens` и `details.actual_tokens`.
+Сервис не возвращает молча усечённый перевод. Генерация Marian без EOS в пределах
+1024 токенов возвращает `500 translation_failed`.
+
+Timeout перевода/аннотации включает ожидание worker и проверки provider.
+Если все `MAX_CONCURRENT_OPERATIONS` слоты заняты, запрос ждёт в пределах своего
+timeout; по истечении возвращается существующий код `translation_timeout` или
+`annotation_timeout`. Списки показывают провайдер как неготовый, если проверка
+не завершилась за соответствующий timeout; `/health/ready` возвращает `503`.
 
 ### Language codes
 

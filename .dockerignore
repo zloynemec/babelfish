@@ -1,0 +1,12 @@
+# Send only application sources and explicit model installers to the builder.
+**
+!Dockerfile
+!pyproject.toml
+!README.md
+!src/
+!src/**
+!scripts/
+!scripts/install_argos_model.py
+!scripts/install_marian_model.py
+**/__pycache__/
+**/*.py[cod]
