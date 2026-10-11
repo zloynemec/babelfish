@@ -95,7 +95,7 @@ def test_iishko_normalizes_upstream_errors(
     assert "private" not in str(caught.value)
 
 
-def test_qwen_local_uses_same_prompt_and_local_endpoint() -> None:
+def test_qwen_local_uses_paraphrase_prompt_and_local_endpoint() -> None:
     captured: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -116,7 +116,8 @@ def test_qwen_local_uses_same_prompt_and_local_endpoint() -> None:
     assert captured[1].url.path == "/v1/chat/completions"
     body = json.loads(captured[1].content)
     assert body["model"] == "qwen3-4b"
-    assert (body["temperature"], body["top_p"], body["top_k"], body["min_p"]) == (0.7, 0.8, 20, 0)
+    assert "in your own words" in body["messages"][0]["content"]
+    assert (body["temperature"], body["top_p"], body["top_k"], body["min_p"]) == (0.2, 0.8, 20, 0)
     assert body["messages"][1]["content"] == "Source text"
 
 
