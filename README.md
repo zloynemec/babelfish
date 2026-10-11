@@ -180,6 +180,8 @@ uvicorn translation_service.main:app --host 0.0.0.0 --port 8000
 
 Для публикации на hive через существующий Traefik подготовлены `Dockerfile`,
 `docker-compose.prod.yml` и `deploy.prod.sh`. Домен: `babelfish.linktool.ru`.
+Production Compose также запускает приватный llama.cpp для `qwen_local`,
+а deploy-скрипт устанавливает Qwen3-4B Q4_K_M с проверкой SHA256.
 Настройка окружения, установка моделей и команды:
 [публикация на hive](docs/10-hive-deployment.md).
 

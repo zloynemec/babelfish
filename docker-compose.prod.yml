@@ -26,7 +26,7 @@ services:
       IISHKO_API_KEY: ${IISHKO_API_KEY:-}
       IISHKO_BASE_URL: ${IISHKO_BASE_URL:-https://api.reformboss.com/v1}
       IISHKO_MODEL: ${IISHKO_MODEL:-qwen3.8-flash}
-      QWEN_LOCAL_BASE_URL: ${QWEN_LOCAL_BASE_URL:-http://127.0.0.1:8081/v1}
+      QWEN_LOCAL_BASE_URL: ${QWEN_LOCAL_BASE_URL:-http://qwen-local:8080/v1}
       QWEN_LOCAL_MODEL: ${QWEN_LOCAL_MODEL:-qwen3-4b}
       ANNOTATION_MAX_INPUT_CHARS: ${ANNOTATION_MAX_INPUT_CHARS:-2000000}
       ANNOTATION_MAX_TEXT_CHARS: ${ANNOTATION_MAX_TEXT_CHARS:-20000}
@@ -80,7 +80,59 @@ services:
       - org.opencontainers.image.revision=${DEPLOY_REVISION:-unknown}
     networks:
       - traefik
+      - qwen
+
+  qwen-local:
+    image: ghcr.io/ggml-org/llama.cpp@sha256:fc9b506e89c1a1cfdd7bc056480f54dc657c1c04d76839a08642dc280b8ed2f6
+    command:
+      - --model
+      - /models/Qwen3-4B-Q4_K_M.gguf
+      - --alias
+      - qwen3-4b
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --ctx-size
+      - "32768"
+      - --parallel
+      - "1"
+      - --threads
+      - "4"
+      - --reasoning
+      - "off"
+      - --no-context-shift
+      - --log-disable
+    user: "10001:10001"
+    volumes:
+      - /apps/focus-hive-site-babelfish/qwen:/models:ro
+    expose:
+      - "8080"
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cpus: 4
+    mem_limit: 10g
+    pids_limit: 128
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, 'http://127.0.0.1:8080/health']
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 120s
+    labels:
+      - traefik.enable=false
+    networks:
+      - qwen
 
 networks:
+  qwen:
+    internal: true
   traefik:
     external: true

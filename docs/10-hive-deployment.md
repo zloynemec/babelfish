@@ -44,6 +44,7 @@ CPU inference. При увеличении числа потоков согла�
 
 Скрипт создаёт context `babelfish-hive`, проверяет его SSH endpoint и сеть
 Traefik, создаёт хранилище с владельцем `10001:10001`, собирает образ на hive,
+устанавливает и проверяет Qwen3-4B Q4_K_M, запускает приватный llama.cpp,
 устанавливает Argos `en -> ru`, запускает API и проверяет readiness внутри
 контейнера. Повторная установка уже имеющейся Argos-модели безопасна.
 Скрипт не изменяет DNS или конфигурацию общего Traefik.
@@ -88,10 +89,48 @@ docker --context babelfish-hive compose --env-file .env.prod \
 ```
 
 Marian-конвертация может потребовать больше RAM, чем обычный inference;
-при нехватке увеличьте `APP_MEMORY` на время установки. `qwen_local` требует
-отдельного llama.cpp сервера: задайте `QWEN_LOCAL_BASE_URL` с адресом, доступным
-контейнеру по приватной сети. `127.0.0.1` в контейнере указывает на сам API,
-а не на хост hive. Compose не запускает llama.cpp.
+при нехватке увеличьте `APP_MEMORY` на время установки.
+
+## Локальный Qwen на production
+
+Compose запускает `qwen-local` на официальном CPU-образе llama.cpp, закреплённом
+по digest. Qwen3-4B Q4_K_M (2.5 GB) загружается скриптом
+`scripts/install_qwen_model.sh` из официального Qwen/Hugging Face с закреплённым
+revision и проверкой SHA256. Скрипт выполняется на hive через SSH перед запуском
+модели; повторный запуск проверяет существующий файл и не загружает его повторно.
+Модель хранится отдельно: `/apps/focus-hive-site-babelfish/qwen`, mount read-only.
+
+`QWEN_LOCAL_BASE_URL=http://qwen-local:8080/v1`, `QWEN_LOCAL_MODEL=qwen3-4b`.
+Сеть `qwen` внутренняя, доступна API и llama.cpp; порты модели не публикуются
+на хосте и не маршрутизируются через Traefik. Контейнер работает от UID/GID
+10001, с лимитами 4 CPU и 10 GB RAM. Контекст — 32768 токенов, один inference
+slot, reasoning отключён. Контентные логи llama.cpp отключены.
+
+Default `iishko` сохраняется; для локальной генерации нужен явный выбор:
+
+```json
+{"text":"Engineers visited the battery testing laboratory.","target_language":"ru","annotator":"qwen_local","annotator_params":{"model":"qwen3-4b"}}
+```
+
+Этот запрос направляется в `/v1/title`. Для `/v1/annotate` используются те же
+поля выбора provider/model без `target_language`. CPU-генерация зависит от
+размера входа; применяются существующие таймауты 90/100 секунд. Длинные входы
+могут не уложиться в них. `annotator_params.model` не загружает новые веса.
+Готовность модели показывается в `/v1/annotators`; `/health/ready` по-прежнему
+проверяет default переводчик.
+
+[Официальный Docker-образ llama.cpp](https://github.com/ggml-org/llama.cpp/blob/master/docs/docker.md),
+[флаги сервера](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md).
+
+Если модель уже установлена, для применения только конфигурации без пересборки:
+
+```bash
+docker --context babelfish-hive compose --env-file .env.prod \
+  -f docker-compose.prod.yml up -d --no-build --wait qwen-local babelfish
+```
+
+При откате API на старый образ локальную модель можно оставить работающей;
+для возврата прежнего подключения восстановите предыдущий `QWEN_LOCAL_BASE_URL`.
 
 Контейнер запускается от UID/GID `10001:10001`, с read-only файловой системой;
 запись разрешена в `/data` и временный `/tmp`. Docker healthcheck проверяет

@@ -46,6 +46,11 @@ echo "Preparing BabelFish model storage on hive..."
 ssh -o BatchMode=yes "${SSH_TARGET}" \
   "install -d -m 0700 -o 10001 -g 10001 '${DATA_DIR}'"
 
+echo "Installing the local Qwen model on hive..."
+ssh -o BatchMode=yes "${SSH_TARGET}" bash -s < "${PROJECT_DIR}/scripts/install_qwen_model.sh"
+compose pull qwen-local
+compose up -d --wait --wait-timeout 240 qwen-local
+
 echo "Building BabelFish on hive..."
 compose build --pull babelfish
 
