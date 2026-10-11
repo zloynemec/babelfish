@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-10-11T09:13:00.888212+00:00",
+  "annotator": "iishko",
+  "model": "qwen3.8-flash",
+  "temperature": 0,
+  "max_tokens": 240,
+  "max_attempts": 2,
+  "timeout_seconds": 100.0,
+  "expected_cases": 46,
+  "completed_cases": 1,
+  "results": [
+    {
+      "id": "coral",
+      "language": "ru",
+      "status": 503,
+      "expected_status": 200,
+      "title": null,
+      "error_code": "annotator_unavailable",
+      "duration_ms": null,
+      "criterion": "Preserve preliminary results; no claim of a proven method.",
+      "editor_review": null
+    }
+  ],
+  "editorial_acceptance": "blocked: configured provider key rejected",
+  "diagnostic": {
+    "upstream_status": 401,
+    "upstream_error_code": "invalid_api_key"
+  }
+}

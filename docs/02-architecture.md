@@ -2,6 +2,11 @@
 
 ## 1. Общая схема
 
+Для `/v1/title` используется `HTTP route -> TitleService -> AnnotatorRegistry
+-> provider.title()`. Реестр и worker pool общие с аннотациями. TitleService
+проверяет лимиты, языки и формат, допускает одну повторную попытку внутри общего
+таймаута. Provider разделяет системное задание и входной материал.
+
 Для отдельного метода `/v1/annotate` используется параллельная цепочка:
 
 ```text
@@ -14,7 +19,7 @@ HTTP route -> AnnotationService -> ContentPreparer -> AnnotatorRegistry
 `AnnotationService` подготавливает содержимое и вызывает provider; `IishkoProvider`
 отвечает за внешний API модели, `QwenLocalProvider` — за локальный llama.cpp сервер.
 Реестр аннотаторов отделён от реестра
-переводчиков. Текст из `/v1/annotate` разрешено отправлять внешнему provider;
+переводчиков. Текст из `/v1/annotate` и `/v1/title` разрешено отправлять внешнему provider;
 ограничение локального inference для `/v1/translate` сохраняется.
 
 ```text

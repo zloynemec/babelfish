@@ -79,3 +79,18 @@ def test_generated_openapi_contains_documented_contract() -> None:
     assert live_schema["properties"]["status"]["const"] == "ok"
     assert set(ready_schema["required"]) == {"status", "default_translator"}
     assert ready_schema["properties"]["status"]["const"] == "ready"
+
+
+def test_title_schema_matches_documented_limits_and_response_fields() -> None:
+    generated = create_app().openapi()["components"]["schemas"]
+    documented = yaml.safe_load(
+        (Path(__file__).parents[2] / "openapi.yaml").read_text(encoding="utf-8")
+    )["components"]["schemas"]
+    for name in ("TitleRequest", "TitleResponse"):
+        assert generated[name]["required"] == documented[name]["required"]
+        assert set(generated[name]["properties"]) == set(documented[name]["properties"])
+        assert generated[name]["additionalProperties"] is False
+    assert generated["TitleRequest"]["properties"]["text"]["maxLength"] == 30_000
+    assert generated["TitleResponse"]["properties"]["title"]["maxLength"] == 120
+    assert generated["TitleMetadata"]["required"] == ["duration_ms"]
+    assert generated["TitleMetadata"]["additionalProperties"] is False

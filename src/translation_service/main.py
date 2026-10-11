@@ -14,12 +14,14 @@ from translation_service.api.middleware import RequestBodyLimitMiddleware
 from translation_service.api.models import ErrorEnvelope
 from translation_service.api.routes_annotate import router as annotate_router
 from translation_service.api.routes_health import router as health_router
+from translation_service.api.routes_title import router as title_router
 from translation_service.api.routes_translate import router as translate_router
 from translation_service.api.routes_translators import router as translators_router
 from translation_service.core.config import Settings
 from translation_service.core.errors import (
     ApplicationError,
     InvalidRequestError,
+    InvalidTitleRequestError,
     TranslationFailedError,
 )
 from translation_service.core.workers import WorkerPool
@@ -30,6 +32,7 @@ from translation_service.providers.qwen_local import QwenLocalProvider
 from translation_service.services.annotation import AnnotationService
 from translation_service.services.annotator_registry import AnnotatorRegistry
 from translation_service.services.registry import TranslatorRegistry
+from translation_service.services.title import TitleService
 from translation_service.services.translation import TranslationService
 
 logger = logging.getLogger("uvicorn.error.translation_service")
@@ -99,6 +102,10 @@ def create_app(
         else AnnotationService(resolved_annotator_registry, resolved_settings, workers=workers)
     )
 
+    application.state.title_service = TitleService(
+        resolved_annotator_registry, resolved_settings, workers=workers
+    )
+
     application.add_middleware(
         RequestBodyLimitMiddleware, max_bytes=resolved_settings.max_request_body_bytes
     )
@@ -107,6 +114,8 @@ def create_app(
     async def add_request_id(request: Request, call_next: RequestResponseEndpoint) -> Response:
         request.state.request_id = str(uuid4())
         started = perf_counter()
+        if request.url.path == "/v1/title":
+            request.state.operation = {"attempts": 0, "title_length": 0}
         status_code = 500
         try:
             try:
@@ -155,7 +164,12 @@ def create_app(
                 for item in error.errors()
             ]
         }
-        return error_response(request, InvalidRequestError(details=details))
+        error_type = InvalidRequestError
+        if request.url.path == "/v1/title" and not any(
+            item["type"] == "json_invalid" for item in error.errors()
+        ):
+            error_type = InvalidTitleRequestError
+        return error_response(request, error_type(details=details))
 
     @application.exception_handler(Exception)
     async def handle_unexpected_error(request: Request, error: Exception) -> JSONResponse:
@@ -173,6 +187,7 @@ def create_app(
 
     application.include_router(translate_router)
     application.include_router(annotate_router)
+    application.include_router(title_router)
     application.include_router(translators_router)
     application.include_router(health_router)
     return application

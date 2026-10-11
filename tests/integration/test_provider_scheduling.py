@@ -61,7 +61,9 @@ async def test_slow_health_does_not_block_liveness(path: str) -> None:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("inject_service", [False, True])
-async def test_translation_and_annotation_share_capacity_after_timeout(inject_service: bool) -> None:
+async def test_translation_and_annotation_share_capacity_after_timeout(
+    inject_service: bool,
+) -> None:
     started = Event()
     release = Event()
     annotation_calls: list[str] = []
@@ -195,7 +197,9 @@ async def test_annotation_does_not_start_inference_after_timeout(stage: str) -> 
             return ProviderAnnotationResult(annotation="Первое. Второе.")
 
     class Service(AnnotationService):
-        def _prepare(self, *, url: str | None, html: str | None, text: str | None) -> tuple[str, bool]:
+        def _prepare(
+            self, *, url: str | None, html: str | None, text: str | None
+        ) -> tuple[str, bool]:
             if stage == "prepare":
                 block()
             return "Hello", False

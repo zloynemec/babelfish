@@ -7,13 +7,17 @@ from translation_service.core.errors import (
     AnnotationTimeoutError,
     AnnotatorUnavailableError,
     InvalidAnnotatorParamsError,
+    InvalidTitleError,
 )
 from translation_service.domain.annotation import (
     AnnotatorHealth,
     ProviderAnnotationRequest,
     ProviderAnnotationResult,
 )
+from translation_service.domain.title import ProviderTitleRequest, ProviderTitleResult
 from translation_service.providers.annotation_prompt import ANNOTATION_SYSTEM_PROMPT
+from translation_service.providers.model_params import resolve_model
+from translation_service.providers.title_prompt import title_prompt
 
 
 class QwenLocalProvider:
@@ -41,18 +45,30 @@ class QwenLocalProvider:
             return AnnotatorHealth(ready=False)
 
     def annotate(self, request: ProviderAnnotationRequest) -> ProviderAnnotationResult:
-        if request.params:
-            raise InvalidAnnotatorParamsError(
-                details={"annotator": self.name, "unknown_parameters": sorted(request.params)}
-            )
+        content = self._complete(request, ANNOTATION_SYSTEM_PROMPT)
+        if not content.strip():
+            raise AnnotationFailedError(details={"annotator": self.name})
+        return ProviderAnnotationResult(annotation=content.strip())
+
+    def title(self, request: ProviderTitleRequest) -> ProviderTitleResult:
+        return ProviderTitleResult(title=self._complete(request, title_prompt(request), title=True))
+
+    def _complete(
+        self,
+        request: ProviderAnnotationRequest | ProviderTitleRequest,
+        system_prompt: str,
+        *,
+        title: bool = False,
+    ) -> str:
+        model = resolve_model(request.params, self._model)
         payload = {
-            "model": self._model,
+            "model": model,
             "messages": [
-                {"role": "system", "content": ANNOTATION_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": request.text},
             ],
             "max_tokens": 240,
-            "temperature": 0.2,
+            "temperature": 0 if title else 0.2,
         }
         try:
             with httpx.Client(
@@ -63,15 +79,22 @@ class QwenLocalProvider:
                 response = client.post(f"{self._base_url}/chat/completions", json=payload)
             if response.status_code in (429, 503) or response.status_code >= 500:
                 raise AnnotatorUnavailableError(details={"annotator": self.name})
+            if response.status_code in (400, 404) and "model" in request.params:
+                raise InvalidAnnotatorParamsError(details={"parameter": "model"})
             if response.status_code != 200:
                 raise AnnotationFailedError(details={"annotator": self.name})
-            content = response.json()["choices"][0]["message"]["content"]
-            if not isinstance(content, str) or not content.strip():
+            choice = response.json()["choices"][0]
+            if title and choice.get("finish_reason") == "length":
+                raise InvalidTitleError()
+            content = choice["message"]["content"]
+            if not isinstance(content, str):
                 raise ValueError("empty content")
-            return ProviderAnnotationResult(annotation=content.strip())
+            return content
         except httpx.TimeoutException:
             raise AnnotationTimeoutError(details={"annotator": self.name}) from None
         except httpx.RequestError:
             raise AnnotatorUnavailableError(details={"annotator": self.name}) from None
-        except (KeyError, IndexError, TypeError, ValueError):
+        except (AttributeError, KeyError, IndexError, TypeError, ValueError):
+            if title:
+                raise InvalidTitleError() from None
             raise AnnotationFailedError(details={"annotator": self.name}) from None

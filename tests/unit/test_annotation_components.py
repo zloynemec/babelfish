@@ -132,3 +132,17 @@ def test_qwen_local_reports_unavailable_when_server_is_down() -> None:
     assert provider.health().ready is False
     with pytest.raises(AnnotatorUnavailableError):
         provider.annotate(ProviderAnnotationRequest(text="Source text", params={}))
+
+
+def test_annotation_default_upstream_400_keeps_existing_failure_contract() -> None:
+    provider = IishkoProvider(
+        api_key="secret",
+        base_url="https://example.org/v1",
+        model="default",
+        timeout_seconds=1,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(400, json={"error": {"code": "invalid_request"}})
+        ),
+    )
+    with pytest.raises(AnnotationFailedError):
+        provider.annotate(ProviderAnnotationRequest(text="material", params={}))

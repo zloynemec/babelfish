@@ -132,3 +132,33 @@ class AnnotationTimeoutError(ApplicationError):
     code = "annotation_timeout"
     status_code = 504
     default_message = "Annotation timed out"
+
+
+class InvalidTitleRequestError(ApplicationError):
+    code = "invalid_request"
+    status_code = 422
+    default_message = "Title request is invalid"
+
+
+class UnsupportedTitleLanguageError(ApplicationError):
+    code = "unsupported_language"
+    status_code = 422
+    default_message = "Title generation supports only ru and en"
+
+
+class InsufficientContentError(ApplicationError):
+    code = "insufficient_content"
+    status_code = 422
+    default_message = "Input does not contain enough meaningful information to generate a title"
+
+
+class InvalidTitleError(ApplicationError):
+    code = "invalid_title"
+    status_code = 502
+    default_message = "Provider did not return a valid title"
+
+
+class TitleFailedError(ApplicationError):
+    code = "title_failed"
+    status_code = 500
+    default_message = "Title generation failed"

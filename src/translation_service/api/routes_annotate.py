@@ -37,9 +37,9 @@ async def annotate_content(
     http_request: Request,
 ) -> AnnotateResponse:
     http_request.state.operation = {
-        "annotator": (
-            request.annotator or http_request.app.state.settings.default_annotator
-        ).strip().lower()[:64],
+        "annotator": (request.annotator or http_request.app.state.settings.default_annotator)
+        .strip()
+        .lower()[:64],
         "input_kind": (
             "url" if request.url is not None else "html" if request.html is not None else "text"
         ),

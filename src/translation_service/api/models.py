@@ -2,6 +2,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from translation_service.core.errors import TextTooLargeError
+
 LanguageCode = Annotated[
     str,
     StringConstraints(pattern=r"^[a-z]{2,3}(-[A-Za-z0-9]+)*$"),
@@ -133,4 +135,45 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 ANNOTATION_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     status_code: {"model": ErrorEnvelope}
     for status_code in (400, 403, 404, 413, 415, 422, 502, 503, 504)
+}
+
+
+class TitleRequest(StrictModel):
+    text: str = Field(
+        min_length=1,
+        description="Plain text; maximum 30000 Unicode characters.",
+        json_schema_extra={"maxLength": 30000},
+    )
+    target_language: LanguageCode
+    annotator: str | None = Field(default=None, min_length=1)
+    annotator_params: dict[str, Any] = Field(
+        default_factory=dict,
+        json_schema_extra={"default": {}},
+        description="Provider parameters. Optional model overrides the configured model.",
+    )
+
+    @model_validator(mode="after")
+    def nonblank_input(self) -> "TitleRequest":
+        if len(self.text) > 30_000:
+            raise TextTooLargeError(details={"max_text_length": 30_000})
+        if not self.text.strip():
+            raise ValueError("text must not be blank")
+        if self.annotator is not None and not self.annotator.strip():
+            raise ValueError("annotator must not be blank")
+        return self
+
+
+class TitleMetadata(StrictModel):
+    duration_ms: int = Field(ge=0)
+
+
+class TitleResponse(StrictModel):
+    title: str = Field(min_length=1, max_length=120)
+    target_language: LanguageCode
+    metadata: TitleMetadata
+
+
+TITLE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    status_code: {"model": ErrorEnvelope}
+    for status_code in (400, 404, 413, 422, 500, 502, 503, 504)
 }

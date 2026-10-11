@@ -9,6 +9,54 @@ info:
 servers:
   - url: http://localhost:8000
 paths:
+  /v1/title:
+    post:
+      tags: [title]
+      summary: Generate a title
+      operationId: generateTitle
+      description: >-
+        Generate one plain text title in ru or en from at most 30000 Unicode
+        characters. Uses the annotator registry, shared worker capacity and
+        ANNOTATION_TIMEOUT_SECONDS (default 100); at most two generation attempts.
+        The selected external provider receives the full text. No URL/HTML extraction.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TitleRequest'
+            examples:
+              minimal:
+                value: {text: 'Moon phases', target_language: ru}
+              selectedModel:
+                value:
+                  text: 'Moon phases'
+                  target_language: en
+                  annotator: iishko
+                  annotator_params: {model: qwen3.8-flash}
+      responses:
+        '200':
+          description: Title generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TitleResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '502':
+          $ref: '#/components/responses/Error502'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '504':
+          $ref: '#/components/responses/Error504'
   /v1/annotate:
     post:
       tags: [annotation]
@@ -177,6 +225,46 @@ paths:
           $ref: '#/components/responses/Error503'
 components:
   schemas:
+    TitleRequest:
+      type: object
+      additionalProperties: false
+      required: [text, target_language]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 30000
+          description: Nonblank plain text. Oversized input returns 413 text_too_large.
+        target_language:
+          $ref: '#/components/schemas/LanguageCode'
+          description: Only ru and en are supported; other codes return 422 unsupported_language.
+        annotator:
+          type: [string, 'null']
+          minLength: 1
+          description: Uses DEFAULT_ANNOTATOR when omitted; built-ins iishko and qwen_local.
+        annotator_params:
+          type: object
+          additionalProperties: true
+          default: {}
+          description: Optional model overrides the configured model; validated by selected provider.
+    TitleResponse:
+      type: object
+      additionalProperties: false
+      required: [title, target_language, metadata]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: One plain text line without framing quotes or markup.
+        target_language:
+          $ref: '#/components/schemas/LanguageCode'
+        metadata:
+          type: object
+          additionalProperties: false
+          required: [duration_ms]
+          properties:
+            duration_ms: {type: integer, minimum: 0}
     AnnotateRequest:
       type: object
       additionalProperties: false
@@ -202,6 +290,10 @@ components:
           type: object
           additionalProperties: true
           default: {}
+          description: >-
+            Built-in providers accept optional model (nonblank printable string,
+            at most 200 characters); defaults to IISHKO_MODEL or QWEN_LOCAL_MODEL.
+            Unknown parameters and unavailable model names return 422 invalid_annotator_params.
     AnnotateResponse:
       type: object
       additionalProperties: false
@@ -393,13 +485,13 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
     Error500:
-      description: Translation failed
+      description: Unexpected internal operation failure
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
     Error502:
-      description: Fetch or annotation failed
+      description: Fetch, annotation, or title response failed
       content:
         application/json:
           schema:
