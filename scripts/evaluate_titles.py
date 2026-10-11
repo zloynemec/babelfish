@@ -69,7 +69,7 @@ async def main() -> None:
         "timestamp": datetime.now(UTC).isoformat(),
         "annotator": args.annotator,
         "model": model,
-        "temperature": 0,
+        "temperature": 0.2 if args.annotator == "qwen_local" else 0,
         "max_tokens": 240,
         "max_attempts": 2,
         "timeout_seconds": settings.annotation_timeout_seconds,

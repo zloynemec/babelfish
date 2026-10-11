@@ -69,10 +69,11 @@
 функция с внешним ИИ-вызовом: подготовленный текст уходит выбранному провайдеру.
 По умолчанию используется `iishko` с моделью `qwen3.8-flash`. Ключ задаётся
 через `IISHKO_API_KEY` в окружении, а не в запросе. Также доступен отдельный
-`annotator: "qwen_local"`: локальный Qwen3-4B Q4_K_M через llama.cpp. Его адрес
+`annotator: "qwen_local"`: локальный Qwen3.5-4B Q5_K_M через llama.cpp. Его адрес
 задаётся `QWEN_LOCAL_BASE_URL` (по умолчанию `http://127.0.0.1:8081/v1`),
-имя модели — `QWEN_LOCAL_MODEL` (`qwen3-4b`). Провайдеры используют один и тот
-же системный запрос. Если выбранный провайдер не готов, `/v1/annotate`
+имя модели — `QWEN_LOCAL_MODEL` (`qwen3.5-4b`). На production прежний alias `qwen3-4b` также
+обслуживает новую модель. Qwen использует отдельную инструкцию краткого пересказа.
+Если выбранный провайдер не готов, `/v1/annotate`
 возвращает `503 annotator_unavailable`. `GET /v1/annotators` показывает
 зарегистрированных аннотаторов и их готовность.
 
@@ -80,9 +81,9 @@
 
 ```bash
 brew install llama.cpp
-mkdir -p models/qwen3-4b
-python -c 'from huggingface_hub import hf_hub_download; hf_hub_download(repo_id="Qwen/Qwen3-4B-GGUF", filename="Qwen3-4B-Q4_K_M.gguf", local_dir="models/qwen3-4b")'
-llama-server --model models/qwen3-4b/Qwen3-4B-Q4_K_M.gguf --alias qwen3-4b --host 127.0.0.1 --port 8081 --ctx-size 32768 --parallel 2 --gpu-layers 99 --reasoning off
+mkdir -p models/qwen3.5-4b
+python -c 'from huggingface_hub import hf_hub_download; hf_hub_download(repo_id="bartowski/Qwen_Qwen3.5-4B-GGUF", filename="Qwen_Qwen3.5-4B-Q5_K_M.gguf", local_dir="models/qwen3.5-4b")'
+llama-server --model models/qwen3.5-4b/Qwen_Qwen3.5-4B-Q5_K_M.gguf --alias qwen3.5-4b,qwen3-4b --host 127.0.0.1 --port 8081 --ctx-size 32768 --parallel 1 --gpu-layers 99 --jinja --reasoning off
 ```
 
 Для CPU запуска параметр `--gpu-layers` можно убрать. API-сервис стартует и без
@@ -181,7 +182,7 @@ uvicorn translation_service.main:app --host 0.0.0.0 --port 8000
 Для публикации на hive через существующий Traefik подготовлены `Dockerfile`,
 `docker-compose.prod.yml` и `deploy.prod.sh`. Домен: `babelfish.linktool.ru`.
 Production Compose также запускает приватный llama.cpp для `qwen_local`,
-а deploy-скрипт устанавливает Qwen3-4B Q4_K_M с проверкой SHA256.
+а deploy-скрипт устанавливает Qwen3.5-4B Q5_K_M с проверкой SHA256.
 Настройка окружения, установка моделей и команды:
 [публикация на hive](docs/10-hive-deployment.md).
 

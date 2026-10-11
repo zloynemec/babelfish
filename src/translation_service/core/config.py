@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     iishko_base_url: str = "https://api.reformboss.com/v1"
     iishko_model: str = "qwen3.8-flash"
     qwen_local_base_url: str = "http://127.0.0.1:8081/v1"
-    qwen_local_model: str = "qwen3-4b"
+    qwen_local_model: str = "qwen3.5-4b"
     annotation_max_input_chars: int = Field(default=2_000_000, ge=1)
     annotation_max_text_chars: int = Field(default=20_000, ge=1)
     annotation_max_download_bytes: int = Field(default=2_000_000, ge=1)

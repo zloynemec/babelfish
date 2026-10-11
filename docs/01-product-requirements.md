@@ -18,7 +18,7 @@ Default provider — `iishko`, default model — `qwen3.8-flash`.
 Оба встроенных аннотатора принимают `annotator_params.model` для выбора модели. Provider можно
 выбрать полем `annotator`; параметры передаются через `annotator_params` и
 валидируются выбранным provider. Дополнительный локальный `qwen_local` использует
-Qwen3-4B Q4_K_M через локальный llama.cpp сервер. Он не меняет default provider.
+Qwen3.5-4B Q5_K_M через локальный llama.cpp сервер. Он не меняет default provider.
 
 ### FR-000.1. Генерация заголовков
 

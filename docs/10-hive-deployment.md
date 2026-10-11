@@ -44,7 +44,7 @@ CPU inference. При увеличении числа потоков согла�
 
 Скрипт создаёт context `babelfish-hive`, проверяет его SSH endpoint и сеть
 Traefik, создаёт хранилище с владельцем `10001:10001`, собирает образ на hive,
-устанавливает и проверяет Qwen3-4B Q4_K_M, запускает приватный llama.cpp,
+устанавливает и проверяет Qwen3.5-4B Q5_K_M, запускает приватный llama.cpp,
 устанавливает Argos `en -> ru`, запускает API и проверяет readiness внутри
 контейнера. Повторная установка уже имеющейся Argos-модели безопасна.
 Скрипт не изменяет DNS или конфигурацию общего Traefik.
@@ -94,22 +94,26 @@ Marian-конвертация может потребовать больше RAM
 ## Локальный Qwen на production
 
 Compose запускает `qwen-local` на официальном CPU-образе llama.cpp, закреплённом
-по digest. Qwen3-4B Q4_K_M (2.5 GB) загружается скриптом
-`scripts/install_qwen_model.sh` из официального Qwen/Hugging Face с закреплённым
+по digest. Qwen3.5-4B Q5_K_M (3.44 GB) загружается скриптом
+`scripts/install_qwen_model.sh` из GGUF-репозитория bartowski на Hugging Face с закреплённым
 revision и проверкой SHA256. Скрипт выполняется на hive через SSH перед запуском
 модели; повторный запуск проверяет существующий файл и не загружает его повторно.
 Модель хранится отдельно: `/apps/focus-hive-site-babelfish/qwen`, mount read-only.
 
-`QWEN_LOCAL_BASE_URL=http://qwen-local:8080/v1`, `QWEN_LOCAL_MODEL=qwen3-4b`.
+`QWEN_LOCAL_BASE_URL=http://qwen-local:8080/v1`, `QWEN_LOCAL_MODEL=qwen3.5-4b`.
 Сеть `qwen` внутренняя, доступна API и llama.cpp; порты модели не публикуются
 на хосте и не маршрутизируются через Traefik. Контейнер работает от UID/GID
 10001, с лимитами 4 CPU и 10 GB RAM. Контекст — 32768 токенов, один inference
-slot, reasoning отключён. Контентные логи llama.cpp отключены.
+slot. Thinking отключён через `--reasoning off`; provider также передаёт
+`chat_template_kwargs.enable_thinking=false` в каждом запросе. Контентные логи llama.cpp отключены.
+
+Старое имя `qwen3-4b` сохранено как совместимый alias новой модели; оба имени
+обслуживают Qwen3.5-4B Q5_K_M. Старый GGUF остаётся на диске для отката.
 
 Default `iishko` сохраняется; для локальной генерации нужен явный выбор:
 
 ```json
-{"text":"Engineers visited the battery testing laboratory.","annotator":"qwen_local","annotator_params":{"model":"qwen3-4b"}}
+{"text":"Engineers visited the battery testing laboratory.","annotator":"qwen_local","annotator_params":{"model":"qwen3.5-4b"}}
 ```
 
 Этот запрос направляется в `/v1/title`. Для `/v1/annotate` используются те же
@@ -175,13 +179,13 @@ docker --context babelfish-hive compose --env-file .env.prod \
 При отсутствии ключа ИИШКО отдельно проверить состояние аннотаторов можно через
 `GET /v1/annotators`. Это не влияет на readiness перевода.
 
-### Параметры генерации Qwen3
+### Параметры генерации Qwen3.5
 
 `qwen_local` использует `temperature=0.2` для коротких заголовков и аннотаций,
 чтобы уменьшить вариативность текста. `top_p=0.8`, `top_k=20`, `min_p=0`
-соответствуют рекомендованным авторами Qwen3 параметрам non-thinking;
+соответствуют рекомендованным авторами Qwen3.5 параметрам non-thinking;
 пониженная temperature выбрана по проверке на серверной модели.
-Источник: https://huggingface.co/Qwen/Qwen3-4B. Они задаются серверным provider,
+Источник: https://huggingface.co/Qwen/Qwen3.5-4B. Они задаются серверным provider,
 а не публичными параметрами запроса. Это вероятностная генерация: ответы могут
 отличаться между запросами. Проверки смешанных слов и копирования ограничивают
 описанные дефекты, но не заменяют редакционную проверку фактов.

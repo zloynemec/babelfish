@@ -20,3 +20,12 @@ def test_local_qwen_is_private_and_reachable_from_api() -> None:
     assert "@sha256:" in model["image"]
     assert "--log-disable" in model["command"]
     assert "http://qwen-local:8080/v1" in api["environment"]["QWEN_LOCAL_BASE_URL"]
+
+
+def test_qwen35_weights_aliases_and_thinking_configuration() -> None:
+    config = yaml.safe_load((ROOT / "docker-compose.prod.yml").read_text())
+    command = config["services"]["qwen-local"]["command"]
+    assert command[command.index("--model") + 1] == "/models/Qwen_Qwen3.5-4B-Q5_K_M.gguf"
+    assert command[command.index("--alias") + 1] == "qwen3.5-4b,qwen3-4b"
+    assert "--jinja" in command
+    assert command[command.index("--reasoning") + 1] == "off"

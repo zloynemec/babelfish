@@ -36,7 +36,7 @@ Base URL примера: `http://localhost:8000`.
 `annotator` (default `DEFAULT_ANNOTATOR=iishko`) и `annotator_params` (default
 `{}`) необязательны. Параметры валидирует выбранный provider. Default модель
 ИИШКО — `qwen3.8-flash`.
-Значение `annotator: "qwen_local"` выбирает локальный Qwen3-4B Q4_K_M через
+Значение `annotator: "qwen_local"` выбирает локальный Qwen3.5-4B Q5_K_M через
 llama.cpp. Адрес и имя модели задаются на сервере переменными
 `QWEN_LOCAL_BASE_URL` и `QWEN_LOCAL_MODEL`. Оба провайдера принимают
 `annotator_params.model`, например `{"model":"qwen3.8-flash"}`. Это непустая

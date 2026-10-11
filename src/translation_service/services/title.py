@@ -97,7 +97,7 @@ def validate_title(value: str, *, source_text: str = "") -> tuple[str, str | Non
         if title.startswith(left) and title.endswith(right):
             title = title[1:-1].strip()
             break
-    if title == INSUFFICIENT_CONTENT:
+    if title in (INSUFFICIENT_CONTENT, INSUFFICIENT_CONTENT.strip("_")):
         raise InsufficientContentError()
     if not title:
         return "", "output must not be empty"

@@ -27,7 +27,7 @@ services:
       IISHKO_BASE_URL: ${IISHKO_BASE_URL:-https://api.reformboss.com/v1}
       IISHKO_MODEL: ${IISHKO_MODEL:-qwen3.8-flash}
       QWEN_LOCAL_BASE_URL: ${QWEN_LOCAL_BASE_URL:-http://qwen-local:8080/v1}
-      QWEN_LOCAL_MODEL: ${QWEN_LOCAL_MODEL:-qwen3-4b}
+      QWEN_LOCAL_MODEL: ${QWEN_LOCAL_MODEL:-qwen3.5-4b}
       ANNOTATION_MAX_INPUT_CHARS: ${ANNOTATION_MAX_INPUT_CHARS:-2000000}
       ANNOTATION_MAX_TEXT_CHARS: ${ANNOTATION_MAX_TEXT_CHARS:-20000}
       ANNOTATION_MAX_DOWNLOAD_BYTES: ${ANNOTATION_MAX_DOWNLOAD_BYTES:-2000000}
@@ -86,9 +86,9 @@ services:
     image: ghcr.io/ggml-org/llama.cpp@sha256:fc9b506e89c1a1cfdd7bc056480f54dc657c1c04d76839a08642dc280b8ed2f6
     command:
       - --model
-      - /models/Qwen3-4B-Q4_K_M.gguf
+      - /models/Qwen_Qwen3.5-4B-Q5_K_M.gguf
       - --alias
-      - qwen3-4b
+      - qwen3.5-4b,qwen3-4b
       - --host
       - 0.0.0.0
       - --port
@@ -99,6 +99,7 @@ services:
       - "1"
       - --threads
       - "4"
+      - --jinja
       - --reasoning
       - "off"
       - --no-context-shift

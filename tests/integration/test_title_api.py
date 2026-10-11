@@ -170,8 +170,9 @@ async def test_two_invalid_outputs_fail_without_exposing_content() -> None:
 
 
 @pytest.mark.anyio
-async def test_insufficient_content_is_not_a_successful_title() -> None:
-    provider = FakeTitleProvider(["__INSUFFICIENT_CONTENT__"])
+@pytest.mark.parametrize("output", ["__INSUFFICIENT_CONTENT__", "INSUFFICIENT_CONTENT"])
+async def test_insufficient_content_is_not_a_successful_title(output: str) -> None:
+    provider = FakeTitleProvider([output])
     response = await post(title_app(provider), {"text": "EXPORT-00017"})
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "insufficient_content"
@@ -238,6 +239,10 @@ async def test_real_provider_model_selection_and_task_isolation(provider_class: 
         bodies.append(body)
         annotation = "Summarize the supplied material" in body["messages"][0]["content"]
         content = "Первое. Второе." if annotation else "Moon phases"
+        if annotation and "response_format" in body:
+            content = json.dumps(
+                {"source_language": "ru", "main_statement": "Первое.", "context": "Второе."}
+            )
         return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
 
     kwargs = {"api_key": "SECRET"} if provider_class is IishkoProvider else {}

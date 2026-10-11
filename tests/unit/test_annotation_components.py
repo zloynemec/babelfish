@@ -102,7 +102,24 @@ def test_qwen_local_uses_paraphrase_prompt_and_local_endpoint() -> None:
         captured.append(request)
         if request.url.path == "/health":
             return httpx.Response(200, json={"status": "ok"})
-        return httpx.Response(200, json={"choices": [{"message": {"content": "Первое. Второе."}}]})
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "source_language": "ru",
+                                    "main_statement": " Первое ",
+                                    "context": "Второе.",
+                                }
+                            )
+                        }
+                    }
+                ]
+            },
+        )
 
     provider = QwenLocalProvider(
         base_url="http://127.0.0.1:8081/v1",
@@ -116,6 +133,8 @@ def test_qwen_local_uses_paraphrase_prompt_and_local_endpoint() -> None:
     assert captured[1].url.path == "/v1/chat/completions"
     body = json.loads(captured[1].content)
     assert body["model"] == "qwen3-4b"
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
+    assert body["response_format"]["json_schema"]["strict"] is True
     assert "in your own words" in body["messages"][0]["content"]
     assert (body["temperature"], body["top_p"], body["top_k"], body["min_p"]) == (0.2, 0.8, 20, 0)
     assert body["messages"][1]["content"] == "Source text"
@@ -148,3 +167,45 @@ def test_annotation_default_upstream_400_keeps_existing_failure_contract() -> No
     )
     with pytest.raises(AnnotationFailedError):
         provider.annotate(ProviderAnnotationRequest(text="material", params={}))
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "not JSON",
+        "[]",
+        '{"main_statement":"First.","context":"Second."}',
+        '{"source_language":"en","main_statement":null,"context":"Second."}',
+        '{"source_language":"en","main_statement":" ","context":"Second."}',
+    ],
+)
+def test_qwen_invalid_structured_annotation_is_a_safe_error(content: str) -> None:
+    provider = QwenLocalProvider(
+        base_url="http://local/v1",
+        model="qwen3.5-4b",
+        timeout_seconds=1,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+        ),
+    )
+    with pytest.raises(AnnotationFailedError):
+        provider.annotate(ProviderAnnotationRequest(text="Source", params={}))
+
+
+def test_qwen_truncated_structured_annotation_is_rejected() -> None:
+    content = json.dumps(
+        {"source_language": "en", "main_statement": "First.", "context": "Second."}
+    )
+    provider = QwenLocalProvider(
+        base_url="http://local/v1",
+        model="qwen3.5-4b",
+        timeout_seconds=1,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(
+                200,
+                json={"choices": [{"finish_reason": "length", "message": {"content": content}}]},
+            )
+        ),
+    )
+    with pytest.raises(AnnotationFailedError):
+        provider.annotate(ProviderAnnotationRequest(text="Source", params={}))
