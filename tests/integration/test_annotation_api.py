@@ -84,7 +84,7 @@ async def test_three_input_modes(payload: dict[str, str], expected_text: str) ->
     assert response.status_code == 200
     assert response.json()["annotation"] == "Первое предложение. Второе предложение."
     assert response.json()["annotator"] == "fake"
-    assert response.json()["language"] == "ru"
+    assert set(response.json()) == {"annotation", "annotator", "metadata"}
     assert response.json()["metadata"]["duration_ms"] >= 0
     assert fake.last_request is not None
     assert fake.last_request.text == expected_text

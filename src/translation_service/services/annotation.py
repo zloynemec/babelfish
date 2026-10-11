@@ -80,7 +80,6 @@ class AnnotationService:
                 raise AnnotationFailedError(details={"annotator": provider_name})
             return {
                 "annotation": annotation,
-                "language": "ru",
                 "annotator": provider_name,
                 "metadata": {
                     "duration_ms": max(0, int((perf_counter() - started) * 1000)),

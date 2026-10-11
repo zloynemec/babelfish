@@ -109,11 +109,11 @@ slot, reasoning отключён. Контентные логи llama.cpp отк
 Default `iishko` сохраняется; для локальной генерации нужен явный выбор:
 
 ```json
-{"text":"Engineers visited the battery testing laboratory.","target_language":"ru","annotator":"qwen_local","annotator_params":{"model":"qwen3-4b"}}
+{"text":"Engineers visited the battery testing laboratory.","annotator":"qwen_local","annotator_params":{"model":"qwen3-4b"}}
 ```
 
 Этот запрос направляется в `/v1/title`. Для `/v1/annotate` используются те же
-поля выбора provider/model без `target_language`. CPU-генерация зависит от
+поля выбора provider/model. Оба метода сохраняют преобладающий язык входного текста. CPU-генерация зависит от
 размера входа; применяются существующие таймауты 90/100 секунд. Длинные входы
 могут не уложиться в них. `annotator_params.model` не загружает новые веса.
 Готовность модели показывается в `/v1/annotators`; `/health/ready` по-прежнему

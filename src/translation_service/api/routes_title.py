@@ -27,13 +27,11 @@ async def generate_title(
             "annotator": (request.annotator or http_request.app.state.settings.default_annotator)
             .strip()
             .lower()[:64],
-            "target_language": request.target_language[:64],
             "text_length": len(request.text),
         }
     )
     result = await service.generate(
         text=request.text,
-        target_language=request.target_language,
         annotator=request.annotator,
         annotator_params=request.annotator_params,
         operation=operation,

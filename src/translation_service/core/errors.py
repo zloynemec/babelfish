@@ -140,12 +140,6 @@ class InvalidTitleRequestError(ApplicationError):
     default_message = "Title request is invalid"
 
 
-class UnsupportedTitleLanguageError(ApplicationError):
-    code = "unsupported_language"
-    status_code = 422
-    default_message = "Title generation supports only ru and en"
-
-
 class InsufficientContentError(ApplicationError):
     code = "insufficient_content"
     status_code = 422

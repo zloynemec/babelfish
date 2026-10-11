@@ -19,7 +19,7 @@ def test_corpus_has_twenty_texts_and_adversarial_cases() -> None:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("status", [200, 503])
-async def test_evaluation_records_both_languages_and_stops_on_unavailability(status: int) -> None:
+async def test_evaluation_records_source_once_and_stops_on_unavailability(status: int) -> None:
     requests = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -37,10 +37,11 @@ async def test_evaluation_records_both_languages_and_stops_on_unavailability(sta
             "iishko",
             "selected",
         )
-    assert len(results) == (2 if status == 200 else 1)
+    assert len(results) == 1
     assert requests[0]["annotator_params"] == {"model": "selected"}
     assert results[0]["editor_review"] is None
     if status == 200:
-        assert [result["language"] for result in results] == ["ru", "en"]
+        assert "target_language" not in requests[0]
+        assert "language" not in results[0]
     else:
         assert results[0]["error_code"] == "annotator_unavailable"

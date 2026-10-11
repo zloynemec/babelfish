@@ -14,7 +14,6 @@ from translation_service.core.errors import (
     InvalidTitleError,
     TextTooLargeError,
     TitleFailedError,
-    UnsupportedTitleLanguageError,
 )
 from translation_service.core.workers import WorkerPool
 from translation_service.domain.title import (
@@ -37,15 +36,12 @@ class TitleService:
         self,
         *,
         text: str,
-        target_language: str,
         annotator: str | None,
         annotator_params: Mapping[str, Any],
         operation: dict[str, Any],
     ) -> dict[str, Any]:
         if len(text) > 30_000:
             raise TextTooLargeError(details={"max_text_length": 30_000})
-        if target_language not in ("ru", "en"):
-            raise UnsupportedTitleLanguageError()
         provider = self._registry.get(annotator or self._settings.default_annotator)
         if not isinstance(provider, TitleProvider):
             raise AnnotatorUnavailableError()
@@ -62,7 +58,6 @@ class TitleService:
                     result = provider.title(
                         ProviderTitleRequest(
                             text=text,
-                            target_language=target_language,
                             params=annotator_params,
                             format_violation=violation,
                         )
@@ -81,7 +76,6 @@ class TitleService:
             operation["title_length"] = len(title)
             return {
                 "title": title,
-                "target_language": target_language,
                 "metadata": {"duration_ms": max(0, int((perf_counter() - started) * 1000))},
             }
         except TimeoutError:

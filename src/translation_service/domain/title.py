@@ -8,7 +8,6 @@ INSUFFICIENT_CONTENT = "__INSUFFICIENT_CONTENT__"
 @dataclass(frozen=True)
 class ProviderTitleRequest:
     text: str
-    target_language: str
     params: Mapping[str, Any]
     format_violation: str | None = None
 

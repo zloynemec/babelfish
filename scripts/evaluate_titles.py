@@ -23,33 +23,30 @@ async def evaluate(
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for case in cases:
-        for language in ("ru", "en"):
-            response = await client.post(
-                "/v1/title",
-                json={
-                    "text": case["text"],
-                    "target_language": language,
-                    "annotator": annotator,
-                    "annotator_params": {"model": model},
-                },
-            )
-            body = response.json()
-            results.append(
-                {
-                    "id": case["id"],
-                    "language": language,
-                    "status": response.status_code,
-                    "expected_status": case["expected_status"],
-                    "title": body.get("title"),
-                    "error_code": body.get("error", {}).get("code"),
-                    "duration_ms": body.get("metadata", {}).get("duration_ms"),
-                    "criterion": case["criterion"],
-                    "editor_review": None,
-                }
-            )
-            print(f"{case['id']} {language}: {response.status_code}", flush=True)
-            if response.status_code in (503, 504):
-                return results
+        response = await client.post(
+            "/v1/title",
+            json={
+                "text": case["text"],
+                "annotator": annotator,
+                "annotator_params": {"model": model},
+            },
+        )
+        body = response.json()
+        results.append(
+            {
+                "id": case["id"],
+                "status": response.status_code,
+                "expected_status": case["expected_status"],
+                "title": body.get("title"),
+                "error_code": body.get("error", {}).get("code"),
+                "duration_ms": body.get("metadata", {}).get("duration_ms"),
+                "criterion": case["criterion"],
+                "editor_review": None,
+            }
+        )
+        print(f"{case['id']}: {response.status_code}", flush=True)
+        if response.status_code in (503, 504):
+            return results
     return results
 
 
@@ -76,7 +73,7 @@ async def main() -> None:
         "max_tokens": 240,
         "max_attempts": 2,
         "timeout_seconds": settings.annotation_timeout_seconds,
-        "expected_cases": len(cases) * 2,
+        "expected_cases": len(cases),
         "completed_cases": len(results),
         "results": results,
         "editorial_acceptance": "pending",

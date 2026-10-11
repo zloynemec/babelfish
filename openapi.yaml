@@ -15,7 +15,7 @@ paths:
       summary: Generate a title
       operationId: generateTitle
       description: >-
-        Generate one plain text title in ru or en from at most 30000 Unicode
+        Generate one plain text title in the predominant source language from at most 30000 Unicode
         characters. Uses the annotator registry, shared worker capacity and
         ANNOTATION_TIMEOUT_SECONDS (default 100); at most two generation attempts.
         The selected external provider receives the full text. No URL/HTML extraction.
@@ -27,11 +27,10 @@ paths:
               $ref: '#/components/schemas/TitleRequest'
             examples:
               minimal:
-                value: {text: 'Moon phases', target_language: ru}
+                value: {text: 'Moon phases'}
               selectedModel:
                 value:
                   text: 'Moon phases'
-                  target_language: en
                   annotator: iishko
                   annotator_params: {model: qwen3.8-flash}
       responses:
@@ -61,6 +60,7 @@ paths:
     post:
       tags: [annotation]
       summary: Annotate content
+      description: Uses the predominant source language, preserving original names and technical identifiers.
       operationId: annotateContent
       requestBody:
         required: true
@@ -228,16 +228,13 @@ components:
     TitleRequest:
       type: object
       additionalProperties: false
-      required: [text, target_language]
+      required: [text]
       properties:
         text:
           type: string
           minLength: 1
           maxLength: 30000
           description: Nonblank plain text. Oversized input returns 413 text_too_large.
-        target_language:
-          $ref: '#/components/schemas/LanguageCode'
-          description: Only ru and en are supported; other codes return 422 unsupported_language.
         annotator:
           type: [string, 'null']
           minLength: 1
@@ -250,15 +247,13 @@ components:
     TitleResponse:
       type: object
       additionalProperties: false
-      required: [title, target_language, metadata]
+      required: [title, metadata]
       properties:
         title:
           type: string
           minLength: 1
           maxLength: 120
           description: One plain text line without framing quotes or markup.
-        target_language:
-          $ref: '#/components/schemas/LanguageCode'
         metadata:
           type: object
           additionalProperties: false
@@ -297,13 +292,10 @@ components:
     AnnotateResponse:
       type: object
       additionalProperties: false
-      required: [annotation, language, annotator, metadata]
+      required: [annotation, annotator, metadata]
       properties:
         annotation:
           type: string
-        language:
-          type: string
-          const: ru
         annotator:
           type: string
         metadata:

@@ -113,7 +113,6 @@ class AnnotationMetadata(StrictModel):
 
 class AnnotateResponse(StrictModel):
     annotation: str
-    language: Literal["ru"]
     annotator: str
     metadata: AnnotationMetadata
 
@@ -144,7 +143,6 @@ class TitleRequest(StrictModel):
         description="Plain text; maximum 30000 Unicode characters.",
         json_schema_extra={"maxLength": 30000},
     )
-    target_language: LanguageCode
     annotator: str | None = Field(default=None, min_length=1)
     annotator_params: dict[str, Any] = Field(
         default_factory=dict,
@@ -169,7 +167,6 @@ class TitleMetadata(StrictModel):
 
 class TitleResponse(StrictModel):
     title: str = Field(min_length=1, max_length=120)
-    target_language: LanguageCode
     metadata: TitleMetadata
 
 

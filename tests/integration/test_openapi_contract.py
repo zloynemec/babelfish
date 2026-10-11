@@ -94,3 +94,19 @@ def test_title_schema_matches_documented_limits_and_response_fields() -> None:
     assert generated["TitleResponse"]["properties"]["title"]["maxLength"] == 120
     assert generated["TitleMetadata"]["required"] == ["duration_ms"]
     assert generated["TitleMetadata"]["additionalProperties"] is False
+
+
+def test_annotation_and_title_schemas_have_no_language_fields() -> None:
+    schemas = create_app().openapi()["components"]["schemas"]
+    documented = yaml.safe_load(
+        (Path(__file__).parents[2] / "openapi.yaml").read_text(encoding="utf-8")
+    )["components"]["schemas"]
+    for name in ("TitleRequest", "TitleResponse", "AnnotateRequest", "AnnotateResponse"):
+        assert set(schemas[name]["properties"]) == set(documented[name]["properties"])
+        assert schemas[name].get("required") == documented[name].get("required")
+        assert (
+            not {"language", "source_language", "target_language"}
+            & schemas[name]["properties"].keys()
+        )
+    assert schemas["TitleRequest"]["required"] == ["text"]
+    assert set(schemas["AnnotateResponse"]["required"]) == {"annotation", "annotator", "metadata"}
