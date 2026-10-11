@@ -22,6 +22,7 @@ from translation_service.domain.title import (
     TitleProvider,
 )
 from translation_service.services.annotator_registry import AnnotatorRegistry
+from translation_service.services.generation_validation import has_invented_mixed_word
 
 
 class TitleService:
@@ -63,7 +64,7 @@ class TitleService:
                         )
                     )
                     anyio.from_thread.check_cancelled()
-                    title, violation = validate_title(result.title)
+                    title, violation = validate_title(result.title, source_text=text)
                 except InvalidTitleError:
                     title, violation = "", "provider response must contain a plain text title"
                 if violation is None:
@@ -86,7 +87,7 @@ class TitleService:
             raise TitleFailedError() from None
 
 
-def validate_title(value: str) -> tuple[str, str | None]:
+def validate_title(value: str, *, source_text: str = "") -> tuple[str, str | None]:
     if not isinstance(value, str):
         return "", "output must be a string"
     if any(char in value for char in "\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029"):
@@ -108,4 +109,6 @@ def validate_title(value: str) -> tuple[str, str | None]:
         return "", "output must be plain text without Markdown or HTML"
     if any(not char.isprintable() for char in title):
         return "", "output contains control characters"
+    if has_invented_mixed_word(title, source_text):
+        return "", "output invents a word mixing Latin and Cyrillic letters; rewrite it"
     return title, None

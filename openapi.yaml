@@ -19,6 +19,8 @@ paths:
         characters. Uses the annotator registry, shared worker capacity and
         ANNOTATION_TIMEOUT_SECONDS (default 100); at most two generation attempts.
         The selected external provider receives the full text. No URL/HTML extraction.
+        Newly invented words mixing Latin and Cyrillic scripts are rejected;
+        original mixed-script identifiers present in the source are preserved.
       requestBody:
         required: true
         content:
@@ -60,7 +62,12 @@ paths:
     post:
       tags: [annotation]
       summary: Annotate content
-      description: Uses the predominant source language, preserving original names and technical identifiers.
+      description: >-
+        Uses the predominant source language, preserving original names and technical identifiers.
+        qwen_local paraphrases the main message in short sentences. For sources of at least
+        30 words, summaries exceeding 25 words or near-verbatim copies are retried once
+        within the overall timeout. Invented Latin/Cyrillic mixed words are also retried.
+        A repeated violation returns 502 annotation_failed.
       operationId: annotateContent
       requestBody:
         required: true

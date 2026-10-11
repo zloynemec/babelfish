@@ -7,6 +7,7 @@ from typing import Any, Protocol
 class ProviderAnnotationRequest:
     text: str
     params: Mapping[str, Any]
+    format_violation: str | None = None
 
 
 @dataclass(frozen=True)

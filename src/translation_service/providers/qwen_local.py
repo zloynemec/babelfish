@@ -45,10 +45,20 @@ class QwenLocalProvider:
             return AnnotatorHealth(ready=False)
 
     def annotate(self, request: ProviderAnnotationRequest) -> ProviderAnnotationResult:
-        content = self._complete(request, ANNOTATION_SYSTEM_PROMPT)
-        if not content.strip():
+        prompt = (
+            ANNOTATION_SYSTEM_PROMPT + " Paraphrase in your own words; do not reproduce quotations "
+            "or whole source sentences. Merge repeated ideas, omit secondary examples "
+            "and parenthetical lists. Use two short sentences covering the main message "
+            "and its attribution. For material of at least 30 words, "
+            "write at most 25 words total. Omit all quotations and parenthetical lists. "
+            "Keep wishes, opinions and allegations attributed; do not turn them into facts."
+        )
+        if request.format_violation:
+            prompt += f" Previous output failed validation: {request.format_violation}. Correct it."
+        content = self._complete(request, prompt).strip()
+        if not content:
             raise AnnotationFailedError(details={"annotator": self.name})
-        return ProviderAnnotationResult(annotation=content.strip())
+        return ProviderAnnotationResult(annotation=content)
 
     def title(self, request: ProviderTitleRequest) -> ProviderTitleResult:
         return ProviderTitleResult(title=self._complete(request, title_prompt(request), title=True))
@@ -68,7 +78,11 @@ class QwenLocalProvider:
                 {"role": "user", "content": request.text},
             ],
             "max_tokens": 240,
-            "temperature": 0 if title else 0.2,
+            # Qwen3 non-thinking sampling recommended by the model authors.
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0,
         }
         try:
             with httpx.Client(

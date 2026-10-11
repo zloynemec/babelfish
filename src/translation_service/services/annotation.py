@@ -1,6 +1,7 @@
 import re
 from collections.abc import Mapping
 from copy import copy
+from difflib import SequenceMatcher
 from time import perf_counter
 from typing import Any
 
@@ -19,6 +20,7 @@ from translation_service.core.workers import WorkerPool
 from translation_service.domain.annotation import ProviderAnnotationRequest
 from translation_service.services.annotator_registry import AnnotatorRegistry
 from translation_service.services.content import SafePageFetcher, extract_html_text
+from translation_service.services.generation_validation import has_invented_mixed_word
 
 _SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
 _ABBREVIATION = re.compile(r"\b(?:тыс|млн|млрд|руб|ул|д|к|г)\.(?=\s)", re.IGNORECASE)  # noqa: RUF001
@@ -65,11 +67,34 @@ class AnnotationService:
             anyio.from_thread.check_cancelled()
             if not provider.health().ready:
                 raise AnnotatorUnavailableError(details={"annotator": provider_name})
-            anyio.from_thread.check_cancelled()
-            result = provider.annotate(
-                ProviderAnnotationRequest(text=prepared, params=annotator_params or {})
-            )
-            return result.annotation, truncated
+            violation = None
+            source_words = re.findall(r"\w+", prepared.casefold())
+            for _ in range(2):
+                anyio.from_thread.check_cancelled()
+                result = provider.annotate(
+                    ProviderAnnotationRequest(
+                        text=prepared, params=annotator_params or {}, format_violation=violation
+                    )
+                )
+                anyio.from_thread.check_cancelled()
+                if provider_name != "qwen_local":
+                    return result.annotation, truncated
+                result_words = re.findall(r"\w+", result.annotation.casefold())
+                if has_invented_mixed_word(result.annotation, prepared):
+                    violation = "output mixes Latin and Cyrillic within a new word; rewrite it"
+                elif len(source_words) < 30:
+                    return result.annotation, truncated
+                elif len(result_words) > 25:
+                    violation = "summary is too long; use at most 25 words total in two sentences"
+                elif (
+                    SequenceMatcher(None, source_words, result_words, autojunk=False).ratio()
+                    >= 0.85
+                ):
+                    violation = "output copies the source; write a shorter summary in new words"
+                else:
+                    return result.annotation, truncated
+
+            raise AnnotationFailedError(details={"annotator": provider_name})
 
         try:
             with anyio.fail_after(self._settings.annotation_timeout_seconds):

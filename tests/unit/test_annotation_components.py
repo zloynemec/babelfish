@@ -116,6 +116,7 @@ def test_qwen_local_uses_same_prompt_and_local_endpoint() -> None:
     assert captured[1].url.path == "/v1/chat/completions"
     body = json.loads(captured[1].content)
     assert body["model"] == "qwen3-4b"
+    assert (body["temperature"], body["top_p"], body["top_k"], body["min_p"]) == (0.7, 0.8, 20, 0)
     assert body["messages"][1]["content"] == "Source text"
 
 

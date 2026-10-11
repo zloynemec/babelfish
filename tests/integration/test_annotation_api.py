@@ -188,3 +188,114 @@ async def test_abbreviation_does_not_count_as_sentence_end() -> None:
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/v1/annotate", json={"text": "Some text"})
     assert response.status_code == 200
+
+
+class CopyingQwen(FakeAnnotator):
+    name = "qwen_local"
+
+    def __init__(self, *, always_copy: bool = False) -> None:
+        super().__init__()
+        self.requests: list[ProviderAnnotationRequest] = []
+        self.always_copy = always_copy
+
+    def annotate(self, request: ProviderAnnotationRequest) -> ProviderAnnotationResult:
+        self.requests.append(request)
+        return ProviderAnnotationResult(
+            annotation=request.text
+            if self.always_copy or len(self.requests) == 1
+            else "Представитель призвал прекратить войну. Общество желает мира."
+        )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("always_copy", [False, True])
+async def test_qwen_copy_is_retried_once_and_not_returned(always_copy: bool) -> None:
+    provider = CopyingQwen(always_copy=always_copy)
+    source = " ".join(f"слово{i}" for i in range(45)) + ". Второе предложение."
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=_app(provider)), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/v1/annotate", json={"text": source, "annotator": "qwen_local"}
+        )
+    assert response.status_code == (502 if always_copy else 200)
+    assert len(provider.requests) == 2
+    assert provider.requests[0].format_violation is None
+    assert "at most 25 words" in provider.requests[1].format_violation
+    if always_copy:
+        assert response.json()["error"]["code"] == "annotation_failed"
+    else:
+        assert response.json()["annotation"] != source
+
+
+@pytest.mark.anyio
+async def test_qwen_near_copy_within_word_limit_is_retried() -> None:
+    provider = CopyingQwen()
+    words = [f"word{i}" for i in range(30)]
+
+    def annotate(request: ProviderAnnotationRequest) -> ProviderAnnotationResult:
+        provider.requests.append(request)
+        return ProviderAnnotationResult(
+            annotation=" ".join(words[:10]) + ". " + " ".join(words[10:25]) + "."
+            if len(provider.requests) == 1
+            else "The representative called for peace. People want peace."
+        )
+
+    provider.annotate = annotate
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=_app(provider)), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/v1/annotate", json={"text": " ".join(words), "annotator": "qwen_local"}
+        )
+    assert response.status_code == 200
+    assert len(provider.requests) == 2
+    assert "copies the source" in provider.requests[1].format_violation
+
+
+@pytest.mark.anyio
+async def test_qwen_timeout_does_not_start_paraphrase_retry() -> None:
+    import time
+
+    import anyio
+
+    provider = CopyingQwen(always_copy=True)
+    original = provider.annotate
+
+    def annotate(request: ProviderAnnotationRequest) -> ProviderAnnotationResult:
+        time.sleep(0.05)
+        return original(request)
+
+    provider.annotate = annotate
+    settings = Settings(default_annotator="qwen_local", annotation_timeout_seconds=0.01)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=_app(provider, settings=settings)), base_url="http://test"
+    ) as client:
+        response = await client.post("/v1/annotate", json={"text": " ".join(["word"] * 45)})
+        assert response.status_code == 504
+        await anyio.sleep(0.1)
+    assert len(provider.requests) == 1
+
+
+@pytest.mark.anyio
+async def test_qwen_mixed_word_is_retried_even_in_short_summary() -> None:
+    provider = CopyingQwen()
+
+    def annotate(request: ProviderAnnotationRequest) -> ProviderAnnotationResult:
+        provider.requests.append(request)
+        return ProviderAnnotationResult(
+            annotation="Представитель хочет мирного разResolutionа. Люди хотят мира."  # noqa: RUF001
+            if len(provider.requests) == 1
+            else "Представитель призывает к миру. Люди хотят мира."
+        )
+
+    provider.annotate = annotate
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=_app(provider)), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/v1/annotate", json={"text": "Люди хотят мира.", "annotator": "qwen_local"}
+        )
+    assert response.status_code == 200
+    assert len(provider.requests) == 2
+    assert "mixes Latin and Cyrillic" in provider.requests[1].format_violation
