@@ -126,14 +126,17 @@ curl -X POST http://localhost:8000/v1/translate \
 
 ## 7. Проверки для разработчика
 
+GitHub Actions выполняет эти проверки на Python 3.12 для pull requests и при push в `main`.
+
 ```bash
-ruff check .
-pytest
+python -m ruff check .
+python -m ruff format --check src tests scripts
+HF_HUB_OFFLINE=1 python -m pytest -m 'not argos_integration and not marian_integration'
 ```
 
-Argos и Marian integration tests автоматически пропускаются, если соответствующая
-модель `en -> ru` не установлена. Тесты API не скачивают модели и используют fake
-provider.
+Для полного локального прогона используйте `python -m pytest`. Тесты Argos и
+Marian пропускаются автоматически, если соответствующая модель `en -> ru` не
+установлена. Тесты HTTP-контракта используют заглушки провайдеров.
 
 ## Обновление проекта
 
