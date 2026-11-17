@@ -1,14 +1,14 @@
-import http.client
 import ipaddress
 import re
-import socket
 import ssl
+from email.message import Message
 from html.parser import HTMLParser
-from time import monotonic
 from urllib.parse import SplitResult, urljoin, urlsplit
 
+import anyio
+import dns.asyncresolver
 import dns.exception
-import dns.resolver
+import httpx
 
 from translation_service.core.errors import (
     ContentFetchFailedError,
@@ -120,52 +120,76 @@ class SafePageFetcher:
         self._dns_server = dns_server
 
     def fetch(self, url: str) -> tuple[str, str]:
-        deadline = monotonic() + self._timeout_seconds
-        current = url
+        return anyio.run(self._fetch, url)
+
+    async def _fetch(self, url: str) -> tuple[str, str]:
+        try:
+            with anyio.fail_after(self._timeout_seconds):
+                async with httpx.AsyncHTTPTransport(
+                    verify=ssl.create_default_context(),
+                    trust_env=False,
+                    # Different redirect hosts can share an IP but require separate TLS sessions.
+                    limits=httpx.Limits(max_keepalive_connections=0),
+                ) as transport:
+                    return await self._download(url, transport)
+        except (OSError, ValueError, dns.exception.DNSException, httpx.HTTPError, httpx.InvalidURL):
+            raise ContentFetchFailedError() from None
+
+    async def _download(self, url: str, transport: httpx.AsyncBaseTransport) -> tuple[str, str]:
         for redirect_count in range(self._max_redirects + 1):
-            host, port, path, scheme = self._validate_url(current)
-            address = self._resolve_public_address(host, port, deadline - monotonic())
-            remaining = deadline - monotonic()
-            if remaining <= 0:
-                raise ContentFetchFailedError()
-            connection = self._connection(host, port, scheme, address, remaining)
+            host, port, path, scheme = self._validate_url(url)
+            address = await self._resolve_public_address(host)
+            host = host.encode("idna").decode("ascii")
+            authority = f"[{host}]" if ":" in host else host
+            if port != (443 if scheme == "https" else 80):
+                authority = f"{authority}:{port}"
+            request = httpx.Request(
+                "GET",
+                httpx.URL(scheme=scheme, host=address, port=port),
+                headers={
+                    "Host": authority,
+                    "Accept": "text/html,text/plain",
+                    "Accept-Encoding": "identity",
+                    "User-Agent": "babelfish-annotate/1",
+                },
+                extensions={"sni_hostname": host, "target": path.encode("ascii")},
+            )
+            response = await transport.handle_async_request(request)
             try:
-                connection.request(
-                    "GET",
-                    path,
-                    headers={
-                        "Accept": "text/html,text/plain",
-                        "Accept-Encoding": "identity",
-                        "User-Agent": "babelfish-annotate/1",
-                    },
-                )
-                response = connection.getresponse()
-                if response.status in (301, 302, 303, 307, 308):
-                    location = response.getheader("Location")
+                if response.status_code in (301, 302, 303, 307, 308):
+                    location = response.headers.get("Location")
                     if not location or redirect_count == self._max_redirects:
                         raise ContentFetchFailedError()
-                    current = urljoin(current, location)
+                    url = urljoin(url, location)
                     continue
-                if response.status != 200:
+                if response.status_code != 200:
                     raise ContentFetchFailedError()
-                content_type = response.headers.get_content_type()
-                if content_type not in ("text/html", "text/plain"):
-                    raise UnsupportedContentTypeError()
-                if response.getheader("Content-Encoding", "identity").lower() != "identity":
-                    raise UnsupportedContentTypeError()
-                data = response.read(self._max_bytes + 1)
-                if len(data) > self._max_bytes:
-                    raise ContentTooLargeError()
-                charset = response.headers.get_content_charset() or "utf-8"
-                try:
-                    return data.decode(charset, errors="replace"), content_type
-                except LookupError:
-                    return data.decode("utf-8", errors="replace"), content_type
-            except (OSError, http.client.HTTPException):
-                raise ContentFetchFailedError() from None
+                return await self._read_page(response)
             finally:
-                connection.close()
+                with anyio.CancelScope(shield=True):
+                    await response.aclose()
         raise ContentFetchFailedError()
+
+    async def _read_page(self, response: httpx.Response) -> tuple[str, str]:
+        headers = Message()
+        if value := response.headers.get("Content-Type"):
+            headers["Content-Type"] = value
+        content_type = headers.get_content_type()
+        if (
+            content_type not in ("text/html", "text/plain")
+            or response.headers.get("Content-Encoding", "identity").lower() != "identity"
+        ):
+            raise UnsupportedContentTypeError()
+        data = bytearray()
+        async for chunk in response.aiter_raw():
+            if len(data) + len(chunk) > self._max_bytes:
+                raise ContentTooLargeError()
+            data.extend(chunk)
+        charset = headers.get_content_charset() or "utf-8"
+        try:
+            return data.decode(charset, errors="replace"), content_type
+        except LookupError:
+            return data.decode("utf-8", errors="replace"), content_type
 
     @staticmethod
     def _validate_url(url: str) -> tuple[str, int, str, str]:
@@ -183,51 +207,18 @@ class SafePageFetcher:
         except ValueError:
             raise UrlNotAllowedError() from None
 
-    def _resolve_public_address(self, host: str, port: int, remaining: float) -> str:
-        if remaining <= 0:
-            raise ContentFetchFailedError()
-        if self._dns_server is None:
-            try:
-                results = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-            except OSError:
-                raise ContentFetchFailedError() from None
-            addresses = [item[4][0] for item in results]
-        else:
-            try:
-                ipaddress.ip_address(host)
-                addresses = [host]
-            except ValueError:
-                resolver = dns.resolver.Resolver(configure=False)
+    async def _resolve_public_address(self, host: str) -> str:
+        try:
+            addresses = [ipaddress.ip_address(host)]
+        except ValueError:
+            resolver = dns.asyncresolver.Resolver(configure=self._dns_server is None)
+            if self._dns_server is not None:
                 resolver.nameservers = [self._dns_server]
-                resolver.lifetime = min(remaining, self._timeout_seconds)
-                addresses = []
-                for record_type in ("A", "AAAA"):
-                    try:
-                        answers = resolver.resolve(host, record_type)
-                        addresses.extend(str(answer) for answer in answers)
-                    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
-                        continue
-                    except dns.exception.DNSException:
-                        raise ContentFetchFailedError() from None
+            remaining = anyio.current_effective_deadline() - anyio.current_time()
+            answers = await resolver.resolve_name(host, lifetime=remaining)
+            addresses = [ipaddress.ip_address(address) for address in answers.addresses()]
         if not addresses:
             raise ContentFetchFailedError()
-        if not all(ipaddress.ip_address(address).is_global for address in addresses):
+        if not all(address.is_global for address in addresses):
             raise UrlNotAllowedError()
-        return addresses[0]
-
-    @staticmethod
-    def _connection(
-        host: str, port: int, scheme: str, address: str, timeout: float
-    ) -> http.client.HTTPConnection:
-        if scheme == "https":
-            connection: http.client.HTTPConnection = http.client.HTTPSConnection(
-                host, port, timeout=timeout, context=ssl.create_default_context()
-            )
-        else:
-            connection = http.client.HTTPConnection(host, port, timeout=timeout)
-        connection._create_connection = lambda _address, timeout=timeout, source_address=None: (
-            socket.create_connection(
-                (address, port), timeout=timeout, source_address=source_address
-            )
-        )
-        return connection
+        return str(min(addresses, key=lambda address: address.version))

@@ -34,6 +34,11 @@ Base URL примера: `http://localhost:8000`.
 Синтаксически некорректный URL возвращает `400 invalid_request` до загрузки.
 Запрещённая схема, URL с учётными данными или непубличный адрес возвращают
 `403 url_not_allowed`.
+Один дедлайн `ANNOTATION_FETCH_TIMEOUT_SECONDS` (по умолчанию 10 секунд)
+охватывает DNS, соединение, все перенаправления и чтение ответа. При его
+истечении возвращается `502 content_fetch_failed`. Общий таймаут аннотации
+`ANNOTATION_TIMEOUT_SECONDS` по-прежнему возвращает `504 annotation_timeout`.
+
 `html` очищается от разметки, скриптов и служебных элементов. `text` передаётся
 модели без изменения; при превышении лимита возвращается ошибка. Поля
 `annotator` (default `DEFAULT_ANNOTATOR=iishko`) и `annotator_params` (default

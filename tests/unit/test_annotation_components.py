@@ -1,12 +1,18 @@
 import json
 import socket
+from collections.abc import AsyncIterator
+from unittest.mock import AsyncMock, Mock
 
+import anyio
+import dns.asyncresolver
 import httpx
 import pytest
 
 from translation_service.core.errors import (
     AnnotationFailedError,
     AnnotatorUnavailableError,
+    ContentFetchFailedError,
+    ContentTooLargeError,
     UrlNotAllowedError,
 )
 from translation_service.domain.annotation import ProviderAnnotationRequest
@@ -31,11 +37,9 @@ def test_fetcher_rejects_unsafe_url_before_dns(url: str) -> None:
 
 
 def test_fetcher_rejects_private_dns_answer(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        socket,
-        "getaddrinfo",
-        lambda *args, **kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 80))],
-    )
+    answers = Mock()
+    answers.addresses.return_value = ["8.8.8.8", "127.0.0.1"]
+    monkeypatch.setattr(dns.asyncresolver.Resolver, "resolve_name", AsyncMock(return_value=answers))
     fetcher = SafePageFetcher(timeout_seconds=1, max_bytes=100)
     with pytest.raises(UrlNotAllowedError):
         fetcher.fetch("http://example.org/")
@@ -45,6 +49,146 @@ def test_explicit_dns_does_not_allow_private_ip_literal() -> None:
     fetcher = SafePageFetcher(timeout_seconds=1, max_bytes=100, dns_server="1.1.1.1")
     with pytest.raises(UrlNotAllowedError):
         fetcher.fetch("http://127.0.0.1/")
+
+
+@pytest.mark.parametrize("dns_server", [None, "1.1.1.1"])
+def test_page_deadline_cancels_dns(monkeypatch: pytest.MonkeyPatch, dns_server: str | None) -> None:
+    cancelled = False
+
+    async def slow_lookup(*args: object, **kwargs: object) -> None:
+        nonlocal cancelled
+        try:
+            await anyio.sleep(1)
+        except anyio.get_cancelled_exc_class():
+            cancelled = True
+            raise
+
+    lookup = AsyncMock(side_effect=slow_lookup)
+    resolver = Mock(resolve_name=lookup)
+    resolver_factory = Mock(return_value=resolver)
+    monkeypatch.setattr(dns.asyncresolver, "Resolver", resolver_factory)
+    # Keep the old DNS paths offline too.
+    monkeypatch.setattr(socket, "getaddrinfo", Mock(side_effect=OSError))
+    monkeypatch.setattr(dns.resolver.Resolver, "resolve", Mock(side_effect=dns.resolver.NoAnswer))
+    fetcher = SafePageFetcher(timeout_seconds=0.2, max_bytes=100, dns_server=dns_server)
+
+    with pytest.raises(ContentFetchFailedError):
+        fetcher.fetch("https://example.org/article")
+
+    assert cancelled
+    resolver_factory.assert_called_once_with(configure=dns_server is None)
+    if dns_server is not None:
+        assert resolver.nameservers == [dns_server]
+
+
+def test_page_deadline_cancels_request_before_response_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cancelled = False
+
+    async def slow_request(request: httpx.Request) -> httpx.Response:
+        nonlocal cancelled
+        try:
+            await anyio.sleep(1)
+        except anyio.get_cancelled_exc_class():
+            cancelled = True
+            raise
+        raise AssertionError("the request should have been cancelled")
+
+    monkeypatch.setattr(
+        httpx, "AsyncHTTPTransport", lambda **kwargs: httpx.MockTransport(slow_request)
+    )
+    monkeypatch.setattr(socket, "create_connection", Mock(side_effect=OSError))
+    fetcher = SafePageFetcher(timeout_seconds=0.2, max_bytes=100)
+
+    with pytest.raises(ContentFetchFailedError):
+        fetcher.fetch("https://8.8.8.8/article")
+
+    assert cancelled
+
+
+def test_page_deadline_is_shared_across_redirects_and_streaming(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requested_hosts: list[str] = []
+    read_chunks = 0
+    closed = False
+
+    class SlowBody(httpx.AsyncByteStream):
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            nonlocal read_chunks
+            for _ in range(4):
+                await anyio.sleep(0.05)
+                read_chunks += 1
+                yield b"x"
+
+        async def aclose(self) -> None:
+            nonlocal closed
+            closed = True
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        requested_hosts.append(request.headers["host"])
+        assert request.url.host == "8.8.8.8"
+        assert request.extensions["sni_hostname"] == request.headers["host"]
+        if len(requested_hosts) == 1:
+            await anyio.sleep(0.15)
+            return httpx.Response(302, headers={"Location": "https://example.com/article"})
+        return httpx.Response(200, headers={"Content-Type": "text/plain"}, stream=SlowBody())
+
+    answers = Mock()
+    answers.addresses.return_value = ["8.8.8.8"]
+    lookup = AsyncMock(return_value=answers)
+    monkeypatch.setattr(dns.asyncresolver.Resolver, "resolve_name", lookup)
+    monkeypatch.setattr(socket, "getaddrinfo", Mock(side_effect=OSError))
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **kwargs: httpx.MockTransport(respond))
+    fetcher = SafePageFetcher(timeout_seconds=0.30, max_bytes=100)
+
+    with pytest.raises(ContentFetchFailedError):
+        fetcher.fetch("https://example.org/story")
+
+    assert requested_hosts == ["example.org", "example.com"]
+    assert lookup.await_count == 2
+    first, second = lookup.await_args_list
+    assert second.kwargs["lifetime"] < first.kwargs["lifetime"]
+    assert 1 <= read_chunks < 4
+    assert closed
+
+
+def test_page_redirect_rechecks_destination_before_connecting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    respond = Mock(
+        return_value=httpx.Response(302, headers={"Location": "http://127.0.0.1/article"})
+    )
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **kwargs: httpx.MockTransport(respond))
+    fetcher = SafePageFetcher(timeout_seconds=1, max_bytes=100)
+
+    with pytest.raises(UrlNotAllowedError):
+        fetcher.fetch("http://8.8.8.8/")
+
+    respond.assert_called_once()
+
+
+@pytest.mark.parametrize("max_bytes", [3, 4])
+def test_page_stream_respects_byte_limit_and_charset(
+    monkeypatch: pytest.MonkeyPatch, max_bytes: int
+) -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "text/plain; charset=latin-1"},
+            stream=httpx.ByteStream(b"caf\xe9"),
+        )
+
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **kwargs: httpx.MockTransport(respond))
+    monkeypatch.setattr(socket, "create_connection", Mock(side_effect=OSError))
+    fetcher = SafePageFetcher(timeout_seconds=1, max_bytes=max_bytes)
+
+    if max_bytes == 3:
+        with pytest.raises(ContentTooLargeError):
+            fetcher.fetch("http://8.8.8.8/")
+    else:
+        assert fetcher.fetch("http://8.8.8.8/") == ("café", "text/plain")
 
 
 def test_iishko_uses_configured_model_and_does_not_expose_key() -> None:

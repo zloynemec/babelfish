@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 from typing import Any
 
+import anyio
 import httpx
 import pytest
 
@@ -131,6 +132,35 @@ async def test_disallowed_url_retains_403(url: str) -> None:
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "url_not_allowed"
+
+
+@pytest.mark.anyio
+async def test_page_fetch_timeout_releases_worker_before_inference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def slow_request(request: httpx.Request) -> httpx.Response:
+        await anyio.sleep(1)
+        raise AssertionError("the request should have been cancelled")
+
+    monkeypatch.setattr(
+        httpx, "AsyncHTTPTransport", lambda **kwargs: httpx.MockTransport(slow_request)
+    )
+    settings = Settings(
+        default_annotator="fake",
+        annotation_fetch_timeout_seconds=0.2,
+        annotation_timeout_seconds=0.6,
+        max_concurrent_operations=1,
+    )
+    fake = FakeAnnotator()
+    transport = httpx.ASGITransport(app=_app(fake, settings=settings))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        fetch = await client.post("/v1/annotate", json={"url": "https://8.8.8.8/article"})
+        assert fake.last_request is None
+        next_request = await client.post("/v1/annotate", json={"text": "Material"})
+
+    assert fetch.status_code == 502
+    assert fetch.json()["error"]["code"] == "content_fetch_failed"
+    assert next_request.status_code == 200
 
 
 @pytest.mark.anyio

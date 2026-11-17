@@ -103,7 +103,9 @@ class AnnotateRequest(StrictModel):
         default=None,
         description=(
             "Absolute URL. Malformed values return 400 invalid_request. "
-            "The fetch policy allows only public HTTP(S) URLs without credentials."
+            "The fetch policy allows only public HTTP(S) URLs without credentials. "
+            "One fetch deadline covers DNS, connection, redirects, and response reading. "
+            "An expired fetch deadline returns 502 content_fetch_failed."
         ),
     )
     html: str | SkipJsonSchema[None] = None
