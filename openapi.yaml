@@ -6,6 +6,8 @@ info:
     Local pluggable machine translation HTTP API. All HTTP bodies are limited by
     MAX_REQUEST_BODY_BYTES (default 16000000 bytes) before JSON parsing; exceeding
     this limit returns 413 request_body_too_large.
+    Routing errors use the standard error envelope. Unknown paths return 404 not_found.
+    Unsupported methods return 405 method_not_allowed with the Allow header.
 servers:
   - url: http://localhost:8000
 paths:

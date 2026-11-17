@@ -273,6 +273,33 @@ async def test_invalid_requests_use_common_error_envelope(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("method", "path", "status", "code", "allow"),
+    [
+        ("GET", "/nonexistent", 404, "not_found", None),
+        ("GET", "/v1/translate", 405, "method_not_allowed", "POST"),
+        ("POST", "/health/live", 405, "method_not_allowed", "GET"),
+    ],
+)
+async def test_routing_errors_use_common_error_envelope(
+    client: httpx.AsyncClient,
+    method: str,
+    path: str,
+    status: int,
+    code: str,
+    allow: str | None,
+) -> None:
+    response = await client.request(method, path)
+
+    assert_error(response, status, code)
+    body = response.json()
+    assert set(body) == {"error"}
+    assert body["error"]["request_id"] == response.headers["X-Request-ID"]
+    assert response.headers["Content-Type"] == "application/json"
+    assert response.headers.get("Allow") == allow
+
+
+@pytest.mark.anyio
 async def test_provider_exception_does_not_leak_details(settings: Settings) -> None:
     def explode(request: ProviderTranslationRequest) -> str:
         raise RuntimeError(f"secret path /private/model for {request.text}")

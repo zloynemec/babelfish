@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from scalar_fastapi import AgentScalarConfig, get_scalar_api_reference
+from starlette.exceptions import HTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 
 from translation_service.api.errors import error_response
@@ -23,6 +24,8 @@ from translation_service.core.errors import (
     ApplicationError,
     InvalidRequestError,
     InvalidTitleRequestError,
+    MethodNotAllowedError,
+    RouteNotFoundError,
     TranslationFailedError,
 )
 from translation_service.core.workers import WorkerPool
@@ -85,7 +88,11 @@ def create_app(
     application = FastAPI(
         title="Local Translation Service",
         version="0.1.0",
-        description="Local pluggable machine translation HTTP API.",
+        description=(
+            "Local pluggable machine translation HTTP API. "
+            "Routing errors use the standard error envelope. Unknown paths return 404 not_found. "
+            "Unsupported methods return 405 method_not_allowed with the Allow header."
+        ),
         docs_url=None,
         responses={413: {"model": ErrorEnvelope}},
     )
@@ -151,6 +158,12 @@ def create_app(
     @application.exception_handler(ApplicationError)
     async def handle_application_error(request: Request, error: ApplicationError) -> JSONResponse:
         return error_response(request, error)
+
+    @application.exception_handler(404)
+    @application.exception_handler(405)
+    async def handle_routing_error(request: Request, error: HTTPException) -> JSONResponse:
+        public_error = RouteNotFoundError() if error.status_code == 404 else MethodNotAllowedError()
+        return error_response(request, public_error, headers=error.headers)
 
     @application.exception_handler(RequestValidationError)
     async def handle_validation_error(

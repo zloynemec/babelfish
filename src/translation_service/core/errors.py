@@ -26,6 +26,18 @@ class InvalidRequestError(ApplicationError):
     default_message = "Request is invalid"
 
 
+class RouteNotFoundError(ApplicationError):
+    code = "not_found"
+    status_code = 404
+    default_message = "Route not found"
+
+
+class MethodNotAllowedError(ApplicationError):
+    code = "method_not_allowed"
+    status_code = 405
+    default_message = "Method not allowed"
+
+
 class TextTooLargeError(ApplicationError):
     code = "text_too_large"
     status_code = 413

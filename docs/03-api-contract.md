@@ -303,7 +303,7 @@ worker, проверку готовности и обе попытки. Сете
 
 ## 5. Error envelope
 
-Все прикладные ошибки:
+Прикладные ошибки и ошибки маршрутизации используют один JSON-формат:
 
 ```json
 {
@@ -328,13 +328,16 @@ worker, проверку готовности и обе попытки. Сете
 | 413 | `text_too_large` | `text` превышает configured limit |
 | 413 | `request_body_too_large` | HTTP body превышает байтовый лимит до разбора JSON |
 | 422 | `invalid_translator_params` | Параметры provider некорректны |
+| 404 | `not_found` | Путь не соответствует маршруту |
 | 404 | `unknown_translator` | Неизвестный `translator` |
+| 405 | `method_not_allowed` | HTTP-метод не поддерживается по этому пути |
 | 422 | `unsupported_language_pair` | Provider не поддерживает пару |
 | 503 | `translator_unavailable` | Provider/model не готов |
 | 504 | `translation_timeout` | Превышен timeout |
 | 500 | `translation_failed` | Непредвиденная ошибка inference |
 
-FastAPI validation errors также следует привести к согласованному публичному формату, а не оставлять второй несовместимый error contract.
+Ответ `405` сохраняет заголовок `Allow` со списком поддерживаемых методов.
+В ответах маршрутизации `error.request_id` совпадает с заголовком `X-Request-ID`.
 
 ## 6. Validation rules
 

@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from uuid import uuid4
 
 from fastapi import Request
@@ -7,7 +8,9 @@ from translation_service.api.models import ErrorBody, ErrorEnvelope
 from translation_service.core.errors import ApplicationError
 
 
-def error_response(request: Request, error: ApplicationError) -> JSONResponse:
+def error_response(
+    request: Request, error: ApplicationError, *, headers: Mapping[str, str] | None = None
+) -> JSONResponse:
     request.state.error_code = error.code
     body = ErrorEnvelope(
         error=ErrorBody(
@@ -17,4 +20,6 @@ def error_response(request: Request, error: ApplicationError) -> JSONResponse:
             request_id=getattr(request.state, "request_id", str(uuid4())),
         )
     )
-    return JSONResponse(status_code=error.status_code, content=body.model_dump(mode="json"))
+    return JSONResponse(
+        status_code=error.status_code, content=body.model_dump(mode="json"), headers=headers
+    )
