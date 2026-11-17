@@ -31,11 +31,15 @@ Base URL примера: `http://localhost:8000`.
 ```
 
 `url` допускает только публичные HTTP(S) ресурсы с `text/html` или `text/plain`.
+Синтаксически некорректный URL возвращает `400 invalid_request` до загрузки.
+Запрещённая схема, URL с учётными данными или непубличный адрес возвращают
+`403 url_not_allowed`.
 `html` очищается от разметки, скриптов и служебных элементов. `text` передаётся
 модели без изменения; при превышении лимита возвращается ошибка. Поля
 `annotator` (default `DEFAULT_ANNOTATOR=iishko`) и `annotator_params` (default
-`{}`) необязательны. Параметры валидирует выбранный provider. Default модель
-ИИШКО — `qwen3.8-flash`.
+`{}`) необязательны. При `annotator: null` используется default provider.
+Пустое или состоящее из пробелов имя возвращает `400 invalid_request`.
+Параметры валидирует выбранный provider. Default модель ИИШКО — `qwen3.8-flash`.
 Значение `annotator: "qwen_local"` выбирает локальный Qwen3.5-4B Q5_K_M через
 llama.cpp. Адрес и имя модели задаются на сервере переменными
 `QWEN_LOCAL_BASE_URL` и `QWEN_LOCAL_MODEL`. Оба провайдера принимают
@@ -92,7 +96,9 @@ llama.cpp. Адрес и имя модели задаются на сервер�
 
 Необязательные `annotator` и `annotator_params.model` работают так же, как в
 `/v1/annotate`: default provider `DEFAULT_ANNOTATOR`, модель из `IISHKO_MODEL`
-или `QWEN_LOCAL_MODEL`. При выборе внешнего `iishko` текст отправляется ему.
+или `QWEN_LOCAL_MODEL`. При `annotator: null` используется default provider.
+Пустое или состоящее из пробелов имя возвращает `422 invalid_request`.
+При выборе внешнего `iishko` текст отправляется ему.
 `qwen_local` выполняет генерацию через настроенный локальный llama.cpp сервер.
 
 ```json
@@ -354,7 +360,7 @@ MVP:
 
 ### `translator`
 
-- непустая строка;
+- строка хотя бы с одним непробельным символом, иначе `400 invalid_request`;
 - нормализовать к lowercase при регистрации/поиске;
 - публичное имя provider стабильно.
 

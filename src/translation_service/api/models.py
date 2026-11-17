@@ -1,13 +1,24 @@
+import re
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
+from pydantic.json_schema import SkipJsonSchema
 
 from translation_service.core.errors import TextTooLargeError
+from translation_service.services.content import parse_page_url
 
 LanguageCode = Annotated[
     str,
     StringConstraints(pattern=r"^[a-z]{2,3}(-[A-Za-z0-9]+)*$"),
 ]
+ProviderName = Annotated[str, StringConstraints(min_length=1, pattern=re.compile(r"\S"))]
 
 
 class StrictModel(BaseModel):
@@ -18,7 +29,7 @@ class TranslateRequest(StrictModel):
     text: str = Field(min_length=1)
     target_language: LanguageCode
     source_language: LanguageCode = Field(default=None)  # type: ignore[assignment]
-    translator: str = Field(default=None, min_length=1)  # type: ignore[assignment]
+    translator: ProviderName = Field(default=None)  # type: ignore[assignment]
     translator_params: dict[str, Any] = Field(
         default_factory=dict,
         json_schema_extra={"default": {}},
@@ -88,13 +99,29 @@ class AnnotateRequest(StrictModel):
         },
     )
 
-    url: str | None = None
-    html: str | None = None
-    text: str | None = None
-    annotator: str | None = Field(default=None, min_length=1)
+    url: str | SkipJsonSchema[None] = Field(
+        default=None,
+        description=(
+            "Absolute URL. Malformed values return 400 invalid_request. "
+            "The fetch policy allows only public HTTP(S) URLs without credentials."
+        ),
+    )
+    html: str | SkipJsonSchema[None] = None
+    text: str | SkipJsonSchema[None] = None
+    annotator: ProviderName | None = None
     annotator_params: dict[str, Any] = Field(
         default_factory=dict, json_schema_extra={"default": {}}
     )
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, url: str | None) -> str | None:
+        if url is not None:
+            try:
+                parse_page_url(url)
+            except ValueError:
+                raise ValueError("url must be a valid absolute URL") from None
+        return url
 
     @model_validator(mode="after")
     def exactly_one_input(self) -> "AnnotateRequest":
@@ -108,7 +135,7 @@ class AnnotateRequest(StrictModel):
 
 class AnnotationMetadata(StrictModel):
     duration_ms: int = Field(ge=0)
-    truncated: bool = False
+    truncated: bool
 
 
 class AnnotateResponse(StrictModel):
@@ -143,7 +170,7 @@ class TitleRequest(StrictModel):
         description="Plain text; maximum 30000 Unicode characters.",
         json_schema_extra={"maxLength": 30000},
     )
-    annotator: str | None = Field(default=None, min_length=1)
+    annotator: ProviderName | None = None
     annotator_params: dict[str, Any] = Field(
         default_factory=dict,
         json_schema_extra={"default": {}},
@@ -156,8 +183,6 @@ class TitleRequest(StrictModel):
             raise TextTooLargeError(details={"max_text_length": 30_000})
         if not self.text.strip():
             raise ValueError("text must not be blank")
-        if self.annotator is not None and not self.annotator.strip():
-            raise ValueError("annotator must not be blank")
         return self
 
 

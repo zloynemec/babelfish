@@ -14,6 +14,7 @@ from translation_service.api.middleware import RequestBodyLimitMiddleware
 from translation_service.api.models import ErrorEnvelope
 from translation_service.api.routes_annotate import router as annotate_router
 from translation_service.api.routes_health import router as health_router
+from translation_service.api.routes_title import generate_title
 from translation_service.api.routes_title import router as title_router
 from translation_service.api.routes_translate import router as translate_router
 from translation_service.api.routes_translators import router as translators_router
@@ -114,7 +115,8 @@ def create_app(
     async def add_request_id(request: Request, call_next: RequestResponseEndpoint) -> Response:
         request.state.request_id = str(uuid4())
         started = perf_counter()
-        if request.url.path == "/v1/title":
+        root_path = request.scope.get("root_path", "").rstrip("/")
+        if request.scope["path"] in ("/v1/title", f"{root_path}/v1/title"):
             request.state.operation = {"attempts": 0, "title_length": 0}
         status_code = 500
         try:
@@ -165,7 +167,7 @@ def create_app(
             ]
         }
         error_type = InvalidRequestError
-        if request.url.path == "/v1/title" and not any(
+        if request.scope.get("endpoint") is generate_title and not any(
             item["type"] == "json_invalid" for item in error.errors()
         ):
             error_type = InvalidTitleRequestError

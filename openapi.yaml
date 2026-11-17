@@ -243,9 +243,10 @@ components:
           maxLength: 30000
           description: Nonblank plain text. Oversized input returns 413 text_too_large.
         annotator:
-          type: [string, 'null']
-          minLength: 1
-          description: Uses DEFAULT_ANNOTATOR when omitted; built-ins iishko and qwen_local.
+          anyOf:
+            - {type: string, minLength: 1, pattern: '\S'}
+            - {type: 'null'}
+          description: Uses DEFAULT_ANNOTATOR when omitted or null; built-ins iishko and qwen_local.
         annotator_params:
           type: object
           additionalProperties: true
@@ -278,7 +279,9 @@ components:
       properties:
         url:
           type: string
-          description: Public HTTP(S) URL.
+          description: >-
+            Absolute URL. Malformed values return 400 invalid_request.
+            The fetch policy allows only public HTTP(S) URLs without credentials.
         html:
           type: string
           description: HTML cleaned before annotation.
@@ -286,8 +289,10 @@ components:
           type: string
           description: Text passed unchanged to the annotator.
         annotator:
-          type: string
-          description: Uses DEFAULT_ANNOTATOR when omitted. Built-in values are iishko and qwen_local.
+          anyOf:
+            - {type: string, minLength: 1, pattern: '\S'}
+            - {type: 'null'}
+          description: Uses DEFAULT_ANNOTATOR when omitted or null; built-ins iishko and qwen_local.
         annotator_params:
           type: object
           additionalProperties: true
@@ -357,6 +362,7 @@ components:
         translator:
           type: string
           minLength: 1
+          pattern: '\S'
           description: Optional provider name. Uses DEFAULT_TRANSLATOR when omitted.
         translator_params:
           type: object

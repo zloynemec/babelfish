@@ -101,14 +101,41 @@ async def test_three_input_modes(payload: dict[str, str], expected_text: str) ->
         {"url": None, "text": "x"},
         {"text": " "},
         {"html": ""},
+        {"text": "Something", "annotator": " \t "},
     ],
 )
-async def test_invalid_input_selection(payload: Mapping[str, str | None]) -> None:
+async def test_invalid_request(payload: Mapping[str, str | None]) -> None:
     transport = httpx.ASGITransport(app=_app(FakeAnnotator()))
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/v1/annotate", json=payload)
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_request"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "url", ["not a url", "https:///article", "https://example.org:bad", "http://[::1"]
+)
+async def test_malformed_url_is_rejected_before_fetch(url: str) -> None:
+    fetcher = FakeFetcher("Article", content_type="text/plain")
+    transport = httpx.ASGITransport(app=_app(FakeAnnotator(), fetcher=fetcher))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/annotate", json={"url": url})
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_request"
+    assert fetcher.last_url is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("url", ["file:///article", "https://user:pass@example.org/article"])
+async def test_disallowed_url_retains_403(url: str) -> None:
+    transport = httpx.ASGITransport(app=_app(FakeAnnotator()))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/annotate", json={"url": url})
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "url_not_allowed"
 
 
 @pytest.mark.anyio
@@ -123,11 +150,14 @@ async def test_annotator_selection_and_list() -> None:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
-            "/v1/annotate", json={"text": "Something", "annotator": "second"}
+            "/v1/annotate", json={"text": "Something", "annotator": " second "}
         )
+        default = await client.post("/v1/annotate", json={"text": "Something", "annotator": None})
         listed = await client.get("/v1/annotators")
     assert response.status_code == 200
     assert response.json()["annotator"] == "second"
+    assert default.status_code == 200
+    assert default.json()["annotator"] == "fake"
     assert second.last_request is not None
     assert listed.json() == {
         "annotators": [{"name": "fake", "ready": True}, {"name": "second", "ready": True}],

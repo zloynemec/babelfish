@@ -5,7 +5,7 @@ import socket
 import ssl
 from html.parser import HTMLParser
 from time import monotonic
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import SplitResult, urljoin, urlsplit
 
 import dns.exception
 import dns.resolver
@@ -94,6 +94,17 @@ def extract_html_text(html: str) -> str:
     return text
 
 
+def parse_page_url(url: str) -> SplitResult:
+    parsed = urlsplit(url)
+    if not parsed.scheme or re.search(r"[\s\x00-\x1f\x7f]", url):
+        raise ValueError("invalid URL")
+    if parsed.scheme in ("http", "https"):
+        if not parsed.hostname:
+            raise ValueError("invalid URL")
+        _ = parsed.port  # urllib.parse validates the port on access.
+    return parsed
+
+
 class SafePageFetcher:
     def __init__(
         self,
@@ -159,7 +170,7 @@ class SafePageFetcher:
     @staticmethod
     def _validate_url(url: str) -> tuple[str, int, str, str]:
         try:
-            parsed = urlsplit(url)
+            parsed = parse_page_url(url)
             if parsed.scheme not in ("http", "https") or not parsed.hostname:
                 raise ValueError("invalid URL")
             if parsed.username is not None or parsed.password is not None:

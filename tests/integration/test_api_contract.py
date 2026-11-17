@@ -62,7 +62,7 @@ async def test_explicit_translator_is_selected(settings: Settings) -> None:
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/v1/translate",
-            json={"text": "Hello", "target_language": "ru", "translator": "SECOND"},
+            json={"text": "Hello", "target_language": "ru", "translator": " SECOND "},
         )
 
     assert response.status_code == 200
@@ -88,6 +88,16 @@ async def test_translator_params_reach_provider(
     assert response.status_code == 200
     assert fake_provider.last_request is not None
     assert fake_provider.last_request.params == params
+
+
+@pytest.mark.anyio
+async def test_whitespace_only_translator(client: httpx.AsyncClient) -> None:
+    response = await client.post(
+        "/v1/translate",
+        json={"text": "Hello", "target_language": "ru", "translator": " \t "},
+    )
+
+    assert_error(response, 400, "invalid_request")
 
 
 @pytest.mark.anyio

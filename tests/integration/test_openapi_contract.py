@@ -110,3 +110,25 @@ def test_annotation_and_title_schemas_have_no_language_fields() -> None:
         )
     assert schemas["TitleRequest"]["required"] == ["text"]
     assert set(schemas["AnnotateResponse"]["required"]) == {"annotation", "annotator", "metadata"}
+
+
+def test_request_validation_constraints_match_documented_contract() -> None:
+    generated = create_app().openapi()["components"]["schemas"]
+    documented = yaml.safe_load(
+        (Path(__file__).parents[2] / "openapi.yaml").read_text(encoding="utf-8")
+    )["components"]["schemas"]
+    provider_name = {"type": "string", "minLength": 1, "pattern": r"\S"}
+    for name, field, expected in (
+        ("TranslateRequest", "translator", provider_name),
+        ("AnnotateRequest", "annotator", {"anyOf": [provider_name, {"type": "null"}]}),
+        ("TitleRequest", "annotator", {"anyOf": [provider_name, {"type": "null"}]}),
+        ("AnnotateRequest", "url", {"type": "string"}),
+        ("AnnotateRequest", "html", {"type": "string"}),
+        ("AnnotateRequest", "text", {"type": "string"}),
+    ):
+        for schema in (generated, documented):
+            constraints = schema[name]["properties"][field]
+            assert {key: constraints.get(key) for key in expected} == expected
+
+    annotate_metadata = documented["AnnotateResponse"]["properties"]["metadata"]
+    assert set(generated["AnnotationMetadata"]["required"]) == set(annotate_metadata["required"])

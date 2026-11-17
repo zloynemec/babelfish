@@ -76,6 +76,26 @@ async def test_success_exact_contract_and_full_unicode_input() -> None:
 
 
 @pytest.mark.anyio
+async def test_title_contract_under_root_path() -> None:
+    provider = FakeTitleProvider(["Valid title"])
+    transport = httpx.ASGITransport(app=title_app(provider), root_path="/api")
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        valid = await client.post("/api/v1/title", json={"text": "Material"})
+        invalid = await client.post("/api/v1/title", json={"text": "Material", "annotator": " "})
+        malformed = await client.post(
+            "/api/v1/title", content="{", headers={"Content-Type": "application/json"}
+        )
+
+    assert valid.status_code == 200
+    assert valid.json()["title"] == "Valid title"
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["code"] == "invalid_request"
+    assert malformed.status_code == 400
+    assert malformed.json()["error"]["code"] == "invalid_request"
+    assert len(provider.requests) == 1
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     "payload",
     [
