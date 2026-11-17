@@ -261,7 +261,7 @@ components:
           type: string
           minLength: 1
           maxLength: 120
-          description: One plain text line without framing quotes or markup.
+          description: Single plain text line with a letter or number. No framing quotes or markup.
         metadata:
           type: object
           additionalProperties: false
@@ -308,6 +308,7 @@ components:
       properties:
         annotation:
           type: string
+          description: Two or three sentences. Abbreviations such as Dr. stay within a sentence.
         annotator:
           type: string
         metadata:

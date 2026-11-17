@@ -139,7 +139,9 @@ class AnnotationMetadata(StrictModel):
 
 
 class AnnotateResponse(StrictModel):
-    annotation: str
+    annotation: str = Field(
+        description="Two or three sentences. Abbreviations such as Dr. stay within a sentence."
+    )
     annotator: str
     metadata: AnnotationMetadata
 
@@ -191,7 +193,11 @@ class TitleMetadata(StrictModel):
 
 
 class TitleResponse(StrictModel):
-    title: str = Field(min_length=1, max_length=120)
+    title: str = Field(
+        min_length=1,
+        max_length=120,
+        description="Single plain text line with a letter or number. No framing quotes or markup.",
+    )
     metadata: TitleMetadata
 
 

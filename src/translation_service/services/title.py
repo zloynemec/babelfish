@@ -109,6 +109,8 @@ def validate_title(value: str, *, source_text: str = "") -> tuple[str, str | Non
         return "", "output must be plain text without Markdown or HTML"
     if any(not char.isprintable() for char in title):
         return "", "output contains control characters"
+    if not any(char.isalnum() for char in title):
+        return "", "output must contain at least one letter or number"
     if has_invented_mixed_word(title, source_text):
         return "", "output invents a word mixing Latin and Cyrillic letters; rewrite it"
     return title, None

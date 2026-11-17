@@ -33,11 +33,6 @@ class FakeAnnotator:
         return ProviderAnnotationResult(annotation="Первое предложение. Второе предложение.")
 
 
-class AbbreviationAnnotator(FakeAnnotator):
-    def annotate(self, request: ProviderAnnotationRequest) -> ProviderAnnotationResult:
-        return ProviderAnnotationResult(annotation="Цена 105 тыс. рублей. Продажи выросли.")
-
-
 class FakeFetcher:
     def __init__(self, body: str, content_type: str = "text/html") -> None:
         self.body = body
@@ -213,11 +208,27 @@ async def test_html_truncation_is_reported() -> None:
 
 
 @pytest.mark.anyio
-async def test_abbreviation_does_not_count_as_sentence_end() -> None:
+@pytest.mark.parametrize(
+    ("annotation", "status"),
+    [
+        ("Цена 105 тыс. рублей. Продажи выросли.", 200),
+        ("Dr. Lee spoke. The team listened. The vote passed.", 200),
+        ("Dr. Lee spoke.", 502),
+    ],
+)
+async def test_abbreviation_does_not_count_as_sentence_end(annotation: str, status: int) -> None:
+    class AbbreviationAnnotator(FakeAnnotator):
+        def annotate(self, request: ProviderAnnotationRequest) -> ProviderAnnotationResult:
+            return ProviderAnnotationResult(annotation=annotation)
+
     transport = httpx.ASGITransport(app=_app(AbbreviationAnnotator()))
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/v1/annotate", json={"text": "Some text"})
-    assert response.status_code == 200
+    assert response.status_code == status
+    if status == 200:
+        assert response.json()["annotation"] == annotation
+    else:
+        assert response.json()["error"]["code"] == "annotation_failed"
 
 
 class CopyingQwen(FakeAnnotator):

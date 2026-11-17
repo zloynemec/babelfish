@@ -152,6 +152,7 @@ async def test_rejected_before_inference(payload: Any, status: int, code: str) -
     [
         "",
         "  ",
+        "...",
         "one\ntwo",
         "x\r",
         "я" * 121,
@@ -173,8 +174,9 @@ async def test_invalid_output_retries_once(invalid: str) -> None:
 
 
 @pytest.mark.anyio
-async def test_two_invalid_outputs_fail_without_exposing_content() -> None:
-    provider = FakeTitleProvider(["private\nSECRET"])
+@pytest.mark.parametrize("invalid", ["private\nSECRET", "..."])
+async def test_two_invalid_outputs_fail_without_exposing_content(invalid: str) -> None:
+    provider = FakeTitleProvider([invalid])
     response = await post(
         title_app(provider),
         {

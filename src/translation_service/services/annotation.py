@@ -23,7 +23,11 @@ from translation_service.services.content import SafePageFetcher, extract_html_t
 from translation_service.services.generation_validation import has_invented_mixed_word
 
 _SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
-_ABBREVIATION = re.compile(r"\b(?:тыс|млн|млрд|руб|ул|д|к|г)\.(?=\s)", re.IGNORECASE)  # noqa: RUF001
+# shortcut: This list covers common abbreviations. Extend it for observed false boundaries.
+_ABBREVIATION = re.compile(
+    r"\b(?:тыс|млн|млрд|руб|ул|д|к|г|mr|mrs|ms|dr|prof)\.(?=\s)",  # noqa: RUF001
+    re.IGNORECASE,
+)
 
 
 class AnnotationService:
