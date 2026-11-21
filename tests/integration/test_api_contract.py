@@ -13,6 +13,7 @@ from translation_service.providers.argos import ArgosProvider
 from translation_service.providers.fake import FakeTranslatorProvider
 from translation_service.providers.iishko import IishkoProvider, IishkoTranslatorProvider
 from translation_service.providers.marian import MarianProvider
+from translation_service.services.annotator_registry import AnnotatorRegistry
 from translation_service.services.registry import TranslatorRegistry
 
 
@@ -182,7 +183,11 @@ async def test_timeout(settings: Settings) -> None:
 @pytest.mark.anyio
 async def test_health_reports_all_checks_without_default_provider(settings: Settings) -> None:
     transport = httpx.ASGITransport(
-        app=create_app(settings=settings, registry=TranslatorRegistry())
+        app=create_app(
+            settings=settings,
+            registry=TranslatorRegistry(),
+            annotator_registry=AnnotatorRegistry(),
+        )
     )
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/health")
@@ -190,7 +195,13 @@ async def test_health_reports_all_checks_without_default_provider(settings: Sett
     assert response.status_code == 503
     assert response.json() == {
         "status": "not_ready",
-        "checks": {"live": True, "translator": {"name": "fake", "ready": False}, "iishko": False},
+        "checks": {
+            "live": True,
+            "translator": {"name": "fake", "ready": False},
+            "iishko": False,
+            "translators": [],
+            "annotators": [],
+        },
     }
 
 
@@ -319,7 +330,13 @@ async def test_readiness_and_translator_list(
     assert ready.status_code == 200
     assert ready.json() == {
         "status": "degraded",
-        "checks": {"live": True, "translator": {"name": "fake", "ready": True}, "iishko": False},
+        "checks": {
+            "live": True,
+            "translator": {"name": "fake", "ready": True},
+            "iishko": False,
+            "translators": [{"name": "fake", "ready": True}],
+            "annotators": [],
+        },
     }
     assert translators.status_code == 200
     assert translators.json() == {

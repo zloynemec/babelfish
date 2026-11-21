@@ -36,7 +36,9 @@ async def test_slow_health_does_not_block_liveness(path: str) -> None:
     registry = TranslatorRegistry()
     registry.register(SlowProvider())
     app = create_app(
-        settings=Settings(default_translator="fake", iishko_api_key=None), registry=registry
+        settings=Settings(default_translator="fake", iishko_api_key=None),
+        registry=registry,
+        annotator_registry=AnnotatorRegistry(),
     )
     if path == "/v1/annotators":
         annotators = AnnotatorRegistry()

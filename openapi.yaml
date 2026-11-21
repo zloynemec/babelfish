@@ -248,8 +248,10 @@ paths:
       summary: Check service health
       operationId: health
       description: >-
-        Reports liveness, default translator readiness, and a cached Iishko annotation probe.
-        If only Iishko fails, the status is degraded and the HTTP response is 200.
+        Reports liveness, readiness for every registered translator and annotator,
+        and a cached Iishko annotation probe.
+        If the default translator is ready but the Iishko probe fails, the response is 200
+        with status degraded.
         If the default translator fails, the HTTP response is 503 with all check results.
       responses:
         '413':
@@ -279,17 +281,27 @@ components:
         checks:
           type: object
           additionalProperties: false
-          required: [live, translator, iishko]
+          required: [live, translator, iishko, translators, annotators]
           properties:
             live: {type: boolean, const: true}
             translator:
-              type: object
-              additionalProperties: false
-              required: [name, ready]
-              properties:
-                name: {type: string}
-                ready: {type: boolean}
+              $ref: '#/components/schemas/TranslatorHealth'
             iishko: {type: boolean}
+            translators:
+              type: array
+              items:
+                $ref: '#/components/schemas/TranslatorHealth'
+            annotators:
+              type: array
+              items:
+                $ref: '#/components/schemas/AnnotatorDescriptor'
+    TranslatorHealth:
+      type: object
+      additionalProperties: false
+      required: [name, ready]
+      properties:
+        name: {type: string}
+        ready: {type: boolean}
     TitleRequest:
       type: object
       additionalProperties: false

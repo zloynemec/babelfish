@@ -8,6 +8,7 @@ from translation_service.core.config import Settings
 from translation_service.main import create_app
 from translation_service.providers.fake import FakeTranslatorProvider
 from translation_service.providers.iishko import IishkoProvider
+from translation_service.providers.qwen_local import QwenLocalProvider
 from translation_service.services.annotator_registry import AnnotatorRegistry
 from translation_service.services.registry import TranslatorRegistry
 
@@ -47,8 +48,18 @@ async def test_iishko_health_checks_real_annotation_path_once(
             transport=httpx.MockTransport(upstream),
         )
     )
+    registry.register(
+        QwenLocalProvider(
+            base_url="http://qwen.test/v1",
+            model="test-model",
+            timeout_seconds=1,
+            transport=httpx.MockTransport(lambda request: httpx.Response(200)),
+        )
+    )
     translators = TranslatorRegistry()
     translators.register(FakeTranslatorProvider(ready=translator_ready))
+    translators.register(FakeTranslatorProvider(name="marian", ready=False))
+    translators.register(FakeTranslatorProvider(name="iishko"))
     app = create_app(
         settings=Settings(default_annotator="qwen_local", default_translator="fake"),
         annotator_registry=registry,
@@ -71,6 +82,15 @@ async def test_iishko_health_checks_real_annotation_path_once(
                     "live": True,
                     "translator": {"name": "fake", "ready": translator_ready},
                     "iishko": iishko_ready,
+                    "translators": [
+                        {"name": "fake", "ready": translator_ready},
+                        {"name": "marian", "ready": False},
+                        {"name": "iishko", "ready": True},
+                    ],
+                    "annotators": [
+                        {"name": "iishko", "ready": iishko_ready},
+                        {"name": "qwen_local", "ready": True},
+                    ],
                 },
             }
 

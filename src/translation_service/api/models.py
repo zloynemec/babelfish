@@ -71,17 +71,6 @@ class TranslatorHealth(StrictModel):
     ready: bool
 
 
-class HealthChecks(StrictModel):
-    live: Literal[True]
-    translator: TranslatorHealth
-    iishko: bool
-
-
-class HealthResponse(StrictModel):
-    status: Literal["ok", "degraded", "not_ready"]
-    checks: HealthChecks
-
-
 class ErrorBody(StrictModel):
     code: str
     message: str
@@ -184,6 +173,19 @@ class AnnotatorDescriptor(StrictModel):
 class AnnotatorListResponse(StrictModel):
     annotators: list[AnnotatorDescriptor]
     default_annotator: str
+
+
+class HealthChecks(StrictModel):
+    live: Literal[True]
+    translator: TranslatorHealth
+    iishko: bool
+    translators: list[TranslatorHealth]
+    annotators: list[AnnotatorDescriptor]
+
+
+class HealthResponse(StrictModel):
+    status: Literal["ok", "degraded", "not_ready"]
+    checks: HealthChecks
 
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {

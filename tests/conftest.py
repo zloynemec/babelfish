@@ -6,6 +6,7 @@ import pytest
 from translation_service.core.config import Settings
 from translation_service.main import create_app
 from translation_service.providers.fake import FakeTranslatorProvider
+from translation_service.services.annotator_registry import AnnotatorRegistry
 from translation_service.services.registry import TranslatorRegistry
 
 
@@ -36,6 +37,8 @@ def registry(fake_provider: FakeTranslatorProvider) -> TranslatorRegistry:
 async def client(
     settings: Settings, registry: TranslatorRegistry
 ) -> AsyncIterator[httpx.AsyncClient]:
-    transport = httpx.ASGITransport(app=create_app(settings=settings, registry=registry))
+    transport = httpx.ASGITransport(
+        app=create_app(settings=settings, registry=registry, annotator_registry=AnnotatorRegistry())
+    )
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as value:
         yield value

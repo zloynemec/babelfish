@@ -89,7 +89,13 @@ def test_generated_openapi_contains_documented_contract() -> None:
         }
     assert health_schema["required"] == ["status", "checks"]
     assert health_schema["properties"]["status"]["enum"] == ["ok", "degraded", "not_ready"]
-    assert set(checks_schema["required"]) == {"live", "translator", "iishko"}
+    assert set(checks_schema["required"]) == {
+        "live",
+        "translator",
+        "iishko",
+        "translators",
+        "annotators",
+    }
 
 
 def test_title_schema_matches_documented_limits_and_response_fields() -> None:
