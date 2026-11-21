@@ -156,6 +156,12 @@ curl --fail https://babelfish.linktool.ru/v1/translate \
 Документация API: <https://babelfish.linktool.ru/docs>.
 TLS-сертификат выпускает существующий Traefik после настройки DNS.
 
+Для отдельной проверки аннотирования через Iishko:
+
+```bash
+curl --fail-with-body https://babelfish.linktool.ru/health/iishko
+```
+
 ## Обновление и диагностика
 
 Перед публикацией нового релиза задайте уникальный `IMAGE_TAG` в `.env.prod`,

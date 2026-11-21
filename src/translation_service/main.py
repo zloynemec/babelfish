@@ -35,6 +35,7 @@ from translation_service.providers.marian import MarianProvider
 from translation_service.providers.qwen_local import QwenLocalProvider
 from translation_service.services.annotation import AnnotationService
 from translation_service.services.annotator_registry import AnnotatorRegistry
+from translation_service.services.iishko_health import IishkoHealthCheck
 from translation_service.services.registry import TranslatorRegistry
 from translation_service.services.title import TitleService
 from translation_service.services.translation import TranslationService
@@ -104,11 +105,13 @@ def create_app(
         resolved_registry, resolved_settings, workers=workers
     )
     application.state.annotator_registry = resolved_annotator_registry
-    application.state.annotation_service = (
+    resolved_annotation_service = (
         annotation_service.with_workers(workers)
         if annotation_service is not None
         else AnnotationService(resolved_annotator_registry, resolved_settings, workers=workers)
     )
+    application.state.annotation_service = resolved_annotation_service
+    application.state.iishko_health = IishkoHealthCheck(resolved_annotation_service)
 
     application.state.title_service = TitleService(
         resolved_annotator_registry, resolved_settings, workers=workers

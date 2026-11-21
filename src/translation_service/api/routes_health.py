@@ -3,11 +3,17 @@ from typing import Annotated
 import anyio
 from fastapi import APIRouter, Depends
 
-from translation_service.api.dependencies import get_registry, get_settings, get_workers
+from translation_service.api.dependencies import (
+    get_iishko_health,
+    get_registry,
+    get_settings,
+    get_workers,
+)
 from translation_service.api.models import ERROR_RESPONSES, LiveResponse, ReadyResponse
 from translation_service.core.config import Settings
-from translation_service.core.errors import TranslatorUnavailableError
+from translation_service.core.errors import AnnotatorUnavailableError, TranslatorUnavailableError
 from translation_service.core.workers import WorkerPool
+from translation_service.services.iishko_health import IishkoHealthCheck
 from translation_service.services.registry import TranslatorRegistry
 
 router = APIRouter(tags=["health"])
@@ -49,3 +55,19 @@ async def health_ready(
         )
 
     return ReadyResponse(status="ready", default_translator=settings.default_translator)
+
+
+@router.get(
+    "/health/iishko",
+    response_model=LiveResponse,
+    responses={503: ERROR_RESPONSES[503]},
+    summary="Iishko annotation probe",
+    operation_id="healthIishko",
+)
+async def health_iishko(
+    check: Annotated[IishkoHealthCheck, Depends(get_iishko_health)],
+) -> LiveResponse:
+    if not await check.is_healthy():
+        raise AnnotatorUnavailableError(details={"annotator": "iishko"})
+
+    return LiveResponse(status="ok")

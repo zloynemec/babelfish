@@ -32,6 +32,12 @@ def test_generated_openapi_contains_documented_contract() -> None:
         assert schema["paths"][operation_path]["post"]["tags"] == [tag]
         assert schema["paths"][registry_path]["get"]["tags"] == [tag]
 
+    for path in ("/v1/annotate", "/v1/title"):
+        assert (
+            schema["paths"][path]["post"]["description"]
+            == documented["paths"][path]["post"]["description"]
+        )
+
     translate = schema["paths"]["/v1/translate"]["post"]
     assert translate["operationId"] == "translateText"
     assert set(translate["responses"]) == {

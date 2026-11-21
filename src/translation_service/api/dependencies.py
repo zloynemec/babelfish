@@ -4,6 +4,7 @@ from translation_service.core.config import Settings
 from translation_service.core.workers import WorkerPool
 from translation_service.services.annotation import AnnotationService
 from translation_service.services.annotator_registry import AnnotatorRegistry
+from translation_service.services.iishko_health import IishkoHealthCheck
 from translation_service.services.registry import TranslatorRegistry
 from translation_service.services.title import TitleService
 from translation_service.services.translation import TranslationService
@@ -31,6 +32,10 @@ def get_annotator_registry(request: Request) -> AnnotatorRegistry:
 
 def get_annotation_service(request: Request) -> AnnotationService:
     return request.app.state.annotation_service
+
+
+def get_iishko_health(request: Request) -> IishkoHealthCheck:
+    return request.app.state.iishko_health
 
 
 def get_title_service(request: Request) -> TitleService:

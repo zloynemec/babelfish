@@ -29,6 +29,14 @@ router = APIRouter(prefix="/v1", tags=["annotation"])
     response_model=AnnotateResponse,
     responses=ANNOTATION_ERROR_RESPONSES,
     summary="Annotate content",
+    description=(
+        "Send exactly one of `url`, `html`, or `text`. The service fetches public URLs "
+        "and extracts readable text from HTML. Plain text goes to the model as supplied. "
+        "The selected annotator (Iishko by default) summarizes the main points in two "
+        "or three sentences in the predominant language of the source. "
+        "The service checks the sentence count. "
+        "`metadata.truncated` reports whether the extracted input was shortened."
+    ),
     operation_id="annotateContent",
 )
 async def annotate_content(
