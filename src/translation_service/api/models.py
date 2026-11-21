@@ -86,7 +86,7 @@ class ErrorEnvelope(StrictModel):
     error: ErrorBody
 
 
-class AnnotateRequest(StrictModel):
+class PageSourceRequest(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
         json_schema_extra={
@@ -110,10 +110,6 @@ class AnnotateRequest(StrictModel):
     )
     html: str | SkipJsonSchema[None] = None
     text: str | SkipJsonSchema[None] = None
-    annotator: ProviderName | None = None
-    annotator_params: dict[str, Any] = Field(
-        default_factory=dict, json_schema_extra={"default": {}}
-    )
 
     @field_validator("url")
     @classmethod
@@ -126,13 +122,27 @@ class AnnotateRequest(StrictModel):
         return url
 
     @model_validator(mode="after")
-    def exactly_one_input(self) -> "AnnotateRequest":
+    def exactly_one_input(self) -> "PageSourceRequest":
         values = (self.url, self.html, self.text)
         if sum(field in self.model_fields_set for field in ("url", "html", "text")) != 1:
             raise ValueError("exactly one of url, html, text is required")
         if not any(value is not None and value.strip() for value in values):
             raise ValueError("input must not be blank")
         return self
+
+
+class AnnotateRequest(PageSourceRequest):
+    annotator: ProviderName | None = None
+    annotator_params: dict[str, Any] = Field(
+        default_factory=dict, json_schema_extra={"default": {}}
+    )
+
+
+class ContentRequest(PageSourceRequest):
+    annotator: ProviderName | None = None
+    annotator_params: dict[str, Any] = Field(
+        default_factory=dict, json_schema_extra={"default": {}}
+    )
 
 
 class AnnotationMetadata(StrictModel):
@@ -146,6 +156,17 @@ class AnnotateResponse(StrictModel):
     )
     annotator: str
     metadata: AnnotationMetadata
+
+
+class ContentMetadata(StrictModel):
+    duration_ms: int = Field(ge=0)
+    truncated: Literal[False]
+
+
+class ContentResponse(StrictModel):
+    content: str = Field(min_length=1, description="Cleaned source text in page order.")
+    annotator: str
+    metadata: ContentMetadata
 
 
 class AnnotatorDescriptor(StrictModel):

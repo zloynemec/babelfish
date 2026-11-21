@@ -1,3 +1,4 @@
+import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -13,6 +14,7 @@ from translation_service.domain.annotation import (
     ProviderAnnotationResult,
 )
 from translation_service.main import create_app
+from translation_service.providers.iishko import IishkoProvider
 from translation_service.services.annotation import AnnotationService
 from translation_service.services.annotator_registry import AnnotatorRegistry
 
@@ -244,6 +246,7 @@ async def test_html_truncation_is_reported() -> None:
         ("Цена 105 тыс. рублей. Продажи выросли.", 200),
         ("Dr. Lee spoke. The team listened. The vote passed.", 200),
         ("Dr. Lee spoke.", 502),
+        ("図書館が開館した。市民が集まった。", 200),
     ],
 )
 async def test_abbreviation_does_not_count_as_sentence_end(annotation: str, status: int) -> None:
@@ -257,6 +260,91 @@ async def test_abbreviation_does_not_count_as_sentence_end(annotation: str, stat
     assert response.status_code == status
     if status == 200:
         assert response.json()["annotation"] == annotation
+    else:
+        assert response.json()["error"]["code"] == "annotation_failed"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("bad", "finish_reason", "repaired", "expected_status", "retry_instruction"),
+    [
+        (
+            "La biblioteca abrió el lunes. Las salas están disponibles para todos.",
+            "length",
+            True,
+            200,
+            "exceeded the output limit",
+        ),
+        (
+            "La biblioteca abrió el lunes. Las salas están disponibles para todos. El horario",
+            "stop",
+            True,
+            200,
+            "unfinished ending",
+        ),
+        (
+            "La bibliothèque a ouvert lundi. Les salles de lecture sont accessibles au public.",
+            "stop",
+            True,
+            200,
+            "changed the language",
+        ),
+        (
+            "The library has opened on Monday. Visitors can freely use the reading rooms.",
+            "stop",
+            False,
+            502,
+            "changed the language",
+        ),
+    ],
+)
+async def test_iishko_retries_incomplete_or_wrong_language_annotations(
+    bad: str, finish_reason: str, repaired: bool, expected_status: int, retry_instruction: str
+) -> None:
+    prompts: list[str] = []
+    good = "La biblioteca municipal reabrió el lunes. Los vecinos pueden usar las salas de lectura."
+    source = (
+        "Durante varios meses la biblioteca municipal permaneció cerrada por una reforma "
+        "del edificio. El ayuntamiento anunció que la reapertura será el lunes y que las "
+        "personas interesadas podrán consultar el catálogo y utilizar las salas de lectura "
+        "sin necesidad de pedir cita."
+    )
+
+    def upstream(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        prompts.append(payload["messages"][0]["content"])
+        content, reason = (good, "stop") if len(prompts) == 2 and repaired else (bad, finish_reason)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {"finish_reason": reason, "message": {"content": content}},
+                ]
+            },
+        )
+
+    registry = AnnotatorRegistry()
+    registry.register(
+        IishkoProvider(
+            api_key="test-key",
+            base_url="https://iishko.test/v1",
+            model="test-model",
+            timeout_seconds=1,
+            transport=httpx.MockTransport(upstream),
+        )
+    )
+    app = create_app(settings=Settings(default_annotator="iishko"), annotator_registry=registry)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post("/v1/annotate", json={"text": source})
+
+    assert response.status_code == expected_status
+    first, retry = prompts
+    assert "ISO 639-1 'es'" in first
+    assert retry_instruction in retry
+    if repaired:
+        assert response.json()["annotation"] == good
     else:
         assert response.json()["error"]["code"] == "annotation_failed"
 

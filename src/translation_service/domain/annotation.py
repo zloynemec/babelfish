@@ -8,6 +8,7 @@ class ProviderAnnotationRequest:
     text: str
     params: Mapping[str, Any]
     format_violation: str | None = None
+    source_language: str | None = None
 
 
 @dataclass(frozen=True)

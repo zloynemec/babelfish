@@ -1,8 +1,10 @@
 import ipaddress
 import re
 import ssl
+from dataclasses import dataclass
 from email.message import Message
 from html.parser import HTMLParser
+from unicodedata import category
 from urllib.parse import SplitResult, urljoin, urlsplit
 
 import anyio
@@ -40,38 +42,128 @@ _BLOCK_TAGS = frozenset(
     {"article", "main", "section", "div", "p", "br", "li", "h1", "h2", "h3", "h4", "h5", "h6"}
 )
 _SPACE = re.compile(r"\s+")
+_VOID_TAGS = frozenset(
+    {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    }
+)
+
+
+@dataclass
+class _Section:
+    all_start: int
+    main_start: int
+    outside_article: bool
+    has_contact_form: bool = False
 
 
 class _TextExtractor(HTMLParser):
-    def __init__(self) -> None:
+    def __init__(self, *, preserve_content_blocks: bool = False) -> None:
         super().__init__(convert_charrefs=True)
+        self._skip_tags = _SKIP_TAGS
+        self._block_tags = _BLOCK_TAGS
+        self._table_cells: frozenset[str] = frozenset()
+        if preserve_content_blocks:
+            self._skip_tags = _SKIP_TAGS - {"header"}
+            self._block_tags = _BLOCK_TAGS | {
+                "header",
+                "blockquote",
+                "figcaption",
+                "dt",
+                "dd",
+                "tr",
+            }
+            self._table_cells = frozenset({"td", "th"})
         self.all_parts: list[str] = []
         self.main_parts: list[str] = []
         self._skip_depth = 0
         self._main_depth = 0
+        self._preserve_content_blocks = preserve_content_blocks
+        self._inline_boundary = False
+        self._path: list[str] = []
+        self._sections: list[_Section] = []
+        self._contact_form_section: _Section | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        del attrs
-        if tag in _SKIP_TAGS:
+        self._inline_boundary = True
+        if self._preserve_content_blocks:
+            if tag == "section":
+                self._sections.append(
+                    _Section(len(self.all_parts), len(self.main_parts), "article" not in self._path)
+                )
+            elif tag == "article":
+                for section in self._sections:
+                    section.outside_article = False
+            elif tag == "form" and self._path[-1:] == ["section"] and self._sections:
+                if (dict(attrs).get("method") or "").lower() == "post":
+                    self._contact_form_section = self._sections[-1]
+            elif (
+                tag == "input"
+                and self._contact_form_section is not None
+                and (dict(attrs).get("type") or "").lower() in {"email", "tel"}
+            ):
+                self._contact_form_section.has_contact_form = True
+            if tag not in _VOID_TAGS:
+                self._path.append(tag)
+        if tag in self._skip_tags:
             self._skip_depth += 1
         if tag in {"main", "article"}:
             self._main_depth += 1
-        if tag in _BLOCK_TAGS:
+        if tag in self._block_tags:
             self._append("\n")
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in _BLOCK_TAGS:
+        self._inline_boundary = True
+        if tag in self._block_tags:
             self._append("\n")
-        if tag in _SKIP_TAGS and self._skip_depth:
+        if tag in self._table_cells:
+            self._append(" ")
+        if tag in self._skip_tags and self._skip_depth:
             self._skip_depth -= 1
         if tag in {"main", "article"} and self._main_depth:
             self._main_depth -= 1
+        if self._preserve_content_blocks:
+            if tag == "form":
+                self._contact_form_section = None
+            elif tag == "section" and self._sections:
+                section = self._sections.pop()
+                if section.outside_article and section.has_contact_form:
+                    del self.all_parts[section.all_start :]
+                    del self.main_parts[section.main_start :]
+            if self._path and self._path[-1] == tag:
+                self._path.pop()
+            elif tag in self._path:
+                closing = len(self._path) - 1 - self._path[::-1].index(tag)
+                del self._path[closing:]
 
     def handle_data(self, data: str) -> None:
+        # Inline element boundaries can be the only separation between a price and nearby copy.
+        if (
+            self._inline_boundary
+            and data
+            and data[0].isalpha()
+            and self.all_parts
+            and category(self.all_parts[-1][-1]) == "Sc"
+        ):
+            self._append("\n" if data[0].isupper() and data[1:2].islower() else " ")
+        self._inline_boundary = False
         self._append(data)
 
     def _append(self, value: str) -> None:
-        if self._skip_depth:
+        if not value or self._skip_depth:
             return
         self.all_parts.append(value)
         if self._main_depth:
@@ -83,8 +175,8 @@ def _normalize(parts: list[str]) -> str:
     return "\n".join(line for line in lines if line)
 
 
-def extract_html_text(html: str) -> str:
-    parser = _TextExtractor()
+def extract_html_text(html: str, *, preserve_content_blocks: bool = False) -> str:
+    parser = _TextExtractor(preserve_content_blocks=preserve_content_blocks)
     parser.feed(html)
     parser.close()
     main = _normalize(parser.main_parts)
@@ -103,6 +195,31 @@ def parse_page_url(url: str) -> SplitResult:
             raise ValueError("invalid URL")
         _ = parsed.port  # urllib.parse validates the port on access.
     return parsed
+
+
+def read_page_text(
+    fetcher: "SafePageFetcher",
+    *,
+    url: str | None,
+    html: str | None,
+    max_html_chars: int,
+    preserve_content_blocks: bool = False,
+) -> str:
+    if html is not None:
+        if len(html) > max_html_chars:
+            raise ContentTooLargeError()
+        page, content_type = html, "text/html"
+    else:
+        assert url is not None
+        page, content_type = fetcher.fetch(url)
+    text = (
+        extract_html_text(page, preserve_content_blocks=preserve_content_blocks)
+        if content_type == "text/html"
+        else page
+    )
+    if not text.strip():
+        raise ContentNotExtractableError()
+    return text
 
 
 class SafePageFetcher:

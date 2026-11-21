@@ -68,7 +68,7 @@ paths:
         and extracts readable text from HTML. Plain text goes to the model as supplied.
         The selected annotator summarizes the main points in two
         or three sentences in the predominant language of the source.
-        The service checks the sentence count.
+        The service retries once if the output is incomplete or confidently in another language.
         `metadata.truncated` reports whether the extracted input was shortened.
       operationId: annotateContent
       requestBody:
@@ -93,6 +93,52 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AnnotateResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '415':
+          $ref: '#/components/responses/Error415'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '502':
+          $ref: '#/components/responses/Error502'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '504':
+          $ref: '#/components/responses/Error504'
+  /v1/content:
+    post:
+      tags: [content]
+      summary: Extract page content
+      description: >-
+        Send exactly one of `url` (public URL), `html` (raw HTML), or `text` (plain text).
+        The service removes navigation, standalone contact forms, and other boilerplate,
+        then returns the original headings, paragraphs, lists, and table rows in `content`
+        in source order. Long pages are processed in batches. A successful response contains
+        the complete cleaned text, with `metadata.truncated` set to `false`.
+        Use `annotator` or `annotator_params.model` to select the provider or model.
+      operationId: extractContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentRequest'
+            examples:
+              url:
+                value: {url: 'https://example.org/article'}
+      responses:
+        '200':
+          description: Original content extracted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentResponse'
         '400':
           $ref: '#/components/responses/Error400'
         '403':
@@ -305,7 +351,7 @@ components:
           required: [duration_ms]
           properties:
             duration_ms: {type: integer, minimum: 0}
-    AnnotateRequest:
+    AnnotateRequest: &page_source_request
       type: object
       additionalProperties: false
       description: Exactly one of url, html, or text must be provided.
@@ -323,10 +369,10 @@ components:
             An expired fetch deadline returns 502 content_fetch_failed.
         html:
           type: string
-          description: HTML cleaned before annotation.
+          description: HTML from which readable text is extracted.
         text:
           type: string
-          description: Text passed unchanged to the annotator.
+          description: Plain text source.
         annotator:
           anyOf:
             - {type: string, minLength: 1, pattern: '\S'}
@@ -340,6 +386,7 @@ components:
             Built-in providers accept optional model (nonblank printable string,
             at most 200 characters); defaults to IISHKO_MODEL or QWEN_LOCAL_MODEL.
             Unknown parameters and unavailable model names return 422 invalid_annotator_params.
+    ContentRequest: *page_source_request
     AnnotateResponse:
       type: object
       additionalProperties: false
@@ -357,6 +404,24 @@ components:
           properties:
             duration_ms: {type: integer, minimum: 0}
             truncated: {type: boolean}
+    ContentResponse:
+      type: object
+      additionalProperties: false
+      required: [content, annotator, metadata]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          description: Cleaned source text in page order.
+        annotator:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: false
+          required: [duration_ms, truncated]
+          properties:
+            duration_ms: {type: integer, minimum: 0}
+            truncated: {type: boolean, const: false}
     AnnotatorDescriptor:
       type: object
       additionalProperties: false
@@ -536,7 +601,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
     Error502:
-      description: Fetch, annotation, or title response failed
+      description: Fetch, content extraction, annotation, or title response failed
       content:
         application/json:
           schema:

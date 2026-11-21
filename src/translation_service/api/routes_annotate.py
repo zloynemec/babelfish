@@ -34,7 +34,7 @@ router = APIRouter(prefix="/v1", tags=["annotation"])
         "and extracts readable text from HTML. Plain text goes to the model as supplied. "
         "The selected annotator summarizes the main points in two "
         "or three sentences in the predominant language of the source. "
-        "The service checks the sentence count. "
+        "The service retries once if the output is incomplete or confidently in another language. "
         "`metadata.truncated` reports whether the extracted input was shortened."
     ),
     operation_id="annotateContent",

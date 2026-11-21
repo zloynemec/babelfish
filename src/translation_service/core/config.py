@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     annotation_dns_server: str | None = None
     annotation_provider_timeout_seconds: float = Field(default=90, gt=0)
     annotation_timeout_seconds: float = Field(default=100, gt=0)
+    content_max_input_chars: int = Field(default=2_000_000, ge=1)
+    content_timeout_seconds: float = Field(default=100, gt=0)
 
     @field_validator("default_translator", "default_source_language", "default_annotator")
     @classmethod

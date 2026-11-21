@@ -14,6 +14,7 @@ from translation_service.api.errors import error_response
 from translation_service.api.middleware import RequestBodyLimitMiddleware
 from translation_service.api.models import ErrorEnvelope
 from translation_service.api.routes_annotate import router as annotate_router
+from translation_service.api.routes_content import router as content_router
 from translation_service.api.routes_health import router as health_router
 from translation_service.api.routes_title import generate_title
 from translation_service.api.routes_title import router as title_router
@@ -35,6 +36,7 @@ from translation_service.providers.marian import MarianProvider
 from translation_service.providers.qwen_local import QwenLocalProvider
 from translation_service.services.annotation import AnnotationService
 from translation_service.services.annotator_registry import AnnotatorRegistry
+from translation_service.services.extraction import ContentService
 from translation_service.services.iishko_health import IishkoHealthCheck
 from translation_service.services.registry import TranslatorRegistry
 from translation_service.services.title import TitleService
@@ -116,6 +118,9 @@ def create_app(
     )
     application.state.annotation_service = resolved_annotation_service
     application.state.iishko_health = IishkoHealthCheck(resolved_annotation_service)
+    application.state.content_service = ContentService(
+        resolved_annotator_registry, resolved_settings, workers=workers
+    )
 
     application.state.title_service = TitleService(
         resolved_annotator_registry, resolved_settings, workers=workers
@@ -209,6 +214,7 @@ def create_app(
 
     application.include_router(translate_router)
     application.include_router(annotate_router)
+    application.include_router(content_router)
     application.include_router(title_router)
     application.include_router(translators_router)
     application.include_router(health_router)

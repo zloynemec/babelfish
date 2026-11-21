@@ -29,6 +29,22 @@ def test_html_extraction_skips_service_content() -> None:
     assert extract_html_text(html) == "Title\nActual content."
 
 
+def test_content_html_extraction_keeps_price_and_article_contact_details() -> None:
+    html = (
+        "<main><article><h1>Course enrollment</h1>"
+        "<p>Tuition: <strong>25 €</strong><span>Materials are included.</span></p>"
+        "<p>The <strong>in</strong><em>structor</em> can answer questions.</p>"
+        "<section><p>Accessibility contact: access@example.org.</p>"
+        '<form method="post"><input type="email"></form></section>'
+        "</article><section><div><h2>Get weekly offers</h2><p>Sign up now.</p></div>"
+        '<form method="POST"><input type="email"></form></section></main>'
+    )
+    assert extract_html_text(html, preserve_content_blocks=True) == (
+        "Course enrollment\nTuition: 25 €\nMaterials are included.\n"
+        "The instructor can answer questions.\nAccessibility contact: access@example.org."
+    )
+
+
 @pytest.mark.parametrize("url", ["file:///etc/passwd", "http://user:pass@example.org/"])
 def test_fetcher_rejects_unsafe_url_before_dns(url: str) -> None:
     fetcher = SafePageFetcher(timeout_seconds=1, max_bytes=100)

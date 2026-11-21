@@ -2,10 +2,12 @@ import re
 from collections.abc import Mapping
 from copy import copy
 from difflib import SequenceMatcher
+from functools import lru_cache
 from time import perf_counter
 from typing import Any
 
 import anyio
+from py3langid.langid import MODEL_FILE, LanguageIdentifier
 
 from translation_service.core.config import Settings
 from translation_service.core.errors import (
@@ -13,21 +15,36 @@ from translation_service.core.errors import (
     AnnotationTimeoutError,
     AnnotatorUnavailableError,
     ApplicationError,
-    ContentNotExtractableError,
     ContentTooLargeError,
+    IncompleteAnnotationError,
 )
 from translation_service.core.workers import WorkerPool
 from translation_service.domain.annotation import ProviderAnnotationRequest
 from translation_service.services.annotator_registry import AnnotatorRegistry
-from translation_service.services.content import SafePageFetcher, extract_html_text
+from translation_service.services.content import SafePageFetcher, read_page_text
 from translation_service.services.generation_validation import has_invented_mixed_word
 
-_SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
+_SENTENCE_END = re.compile(
+    r"""[.!?\u2026]+["')\]\u201d\u2019\u00bb]*(?:\s|$)|[\u3002\uff01\uff1f\u061f]+"""
+)
 # shortcut: This list covers common abbreviations. Extend it for observed false boundaries.
 _ABBREVIATION = re.compile(
     r"\b(?:тыс|млн|млрд|руб|ул|д|к|г|mr|mrs|ms|dr|prof)\.(?=\s)",  # noqa: RUF001
     re.IGNORECASE,
 )
+
+
+@lru_cache(maxsize=1)
+def _language_identifier() -> LanguageIdentifier:
+    return LanguageIdentifier.from_model_file(MODEL_FILE, norm_probs=True)
+
+
+def _detect_language(text: str) -> str | None:
+    # shortcut: Skip low-confidence guesses on short or ambiguous text.
+    if sum(char.isalpha() for char in text) < 24:
+        return None
+    language, confidence = _language_identifier().classify(text)
+    return str(language) if confidence >= 0.85 else None
 
 
 class AnnotationService:
@@ -72,41 +89,46 @@ class AnnotationService:
             if not provider.health().ready:
                 raise AnnotatorUnavailableError(details={"annotator": provider_name})
             violation = None
-            source_words = re.findall(r"\w+", prepared.casefold())
+            source_language = _detect_language(prepared)
+            source_words = (
+                re.findall(r"\w+", prepared.casefold()) if provider_name == "qwen_local" else []
+            )
             for _ in range(2):
                 anyio.from_thread.check_cancelled()
-                result = provider.annotate(
-                    ProviderAnnotationRequest(
-                        text=prepared, params=annotator_params or {}, format_violation=violation
+                try:
+                    result = provider.annotate(
+                        ProviderAnnotationRequest(
+                            text=prepared,
+                            params=annotator_params or {},
+                            format_violation=violation,
+                            source_language=source_language,
+                        )
                     )
-                )
+                except IncompleteAnnotationError:
+                    violation = "it exceeded the output limit"
+                    continue
                 anyio.from_thread.check_cancelled()
-                if provider_name != "qwen_local":
-                    return result.annotation, truncated
-                result_words = re.findall(r"\w+", result.annotation.casefold())
-                if has_invented_mixed_word(result.annotation, prepared):
-                    violation = "output mixes Latin and Cyrillic within a new word; rewrite it"
-                elif len(source_words) < 30:
-                    return result.annotation, truncated
-                elif len(result_words) > 25:
-                    violation = "summary is too long; use at most 25 words total in two sentences"
-                elif (
-                    SequenceMatcher(None, source_words, result_words, autojunk=False).ratio()
-                    >= 0.85
-                ):
-                    violation = "output copies the source; write a shorter summary in new words"
-                else:
-                    return result.annotation, truncated
+                annotation = result.annotation.strip()
+                if provider_name == "qwen_local":
+                    violation = _qwen_violation(annotation, prepared, source_words)
+                    if violation:
+                        continue
+                countable = _ABBREVIATION.sub("", annotation)
+                endings = list(_SENTENCE_END.finditer(countable))
+                if len(endings) not in (2, 3) or endings[-1].end() != len(countable):
+                    violation = "return two or three complete sentences with no unfinished ending"
+                    continue
+                output_language = _detect_language(annotation) if source_language else None
+                if output_language and output_language != source_language:
+                    violation = "the answer changed the language of the source"
+                    continue
+                return annotation, truncated
 
             raise AnnotationFailedError(details={"annotator": provider_name})
 
         try:
             with anyio.fail_after(self._settings.annotation_timeout_seconds):
                 annotation, truncated = await self._workers.run(invoke)
-            annotation = annotation.strip()
-            countable = _ABBREVIATION.sub("", annotation)
-            if len(_SENTENCE_END.findall(countable)) not in (2, 3):
-                raise AnnotationFailedError(details={"annotator": provider_name})
             return {
                 "annotation": annotation,
                 "annotator": provider_name,
@@ -127,15 +149,24 @@ class AnnotationService:
             if len(text) > self._settings.annotation_max_text_chars:
                 raise ContentTooLargeError()
             return text, False
-        if html is not None:
-            if len(html) > self._settings.annotation_max_input_chars:
-                raise ContentTooLargeError()
-            prepared = extract_html_text(html)
-        else:
-            assert url is not None
-            fetched, content_type = self._fetcher.fetch(url)
-            prepared = extract_html_text(fetched) if content_type == "text/html" else fetched
-        if not prepared.strip():
-            raise ContentNotExtractableError()
+        prepared = read_page_text(
+            self._fetcher,
+            url=url,
+            html=html,
+            max_html_chars=self._settings.annotation_max_input_chars,
+        )
         max_chars = self._settings.annotation_max_text_chars
         return prepared[:max_chars], len(prepared) > max_chars
+
+
+def _qwen_violation(annotation: str, prepared: str, source_words: list[str]) -> str | None:
+    if has_invented_mixed_word(annotation, prepared):
+        return "output mixes Latin and Cyrillic within a new word; rewrite it"
+    if len(source_words) < 30:
+        return None
+    result_words = re.findall(r"\w+", annotation.casefold())
+    if len(result_words) > 25:
+        return "summary is too long; use at most 25 words total in two sentences"
+    if SequenceMatcher(None, source_words, result_words, autojunk=False).ratio() >= 0.85:
+        return "output copies the source; write a shorter summary in new words"
+    return None

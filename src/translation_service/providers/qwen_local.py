@@ -8,6 +8,9 @@ from translation_service.core.errors import (
     AnnotationFailedError,
     AnnotationTimeoutError,
     AnnotatorUnavailableError,
+    ContentExtractionFailedError,
+    ContentExtractionTimeoutError,
+    IncompleteAnnotationError,
     InvalidAnnotatorParamsError,
     InvalidTitleError,
 )
@@ -16,7 +19,10 @@ from translation_service.domain.annotation import (
     ProviderAnnotationRequest,
     ProviderAnnotationResult,
 )
+from translation_service.domain.content import ProviderContentRequest
 from translation_service.domain.title import ProviderTitleRequest, ProviderTitleResult
+from translation_service.providers.annotation_prompt import annotation_language_instruction
+from translation_service.providers.content_prompt import CONTENT_SYSTEM_PROMPT
 from translation_service.providers.model_params import resolve_model
 from translation_service.providers.title_prompt import title_prompt
 
@@ -59,6 +65,7 @@ class QwenLocalProvider:
             "Omit secondary lists and quotations. For sources of at least 30 words use at most "
             "25 words across both sentences."
         )
+        prompt += annotation_language_instruction(request)
         if request.format_violation:
             prompt += f" Previous output failed validation: {request.format_violation}. Correct it."
         content = self._complete(request, prompt)
@@ -89,21 +96,28 @@ class QwenLocalProvider:
     def title(self, request: ProviderTitleRequest) -> ProviderTitleResult:
         return ProviderTitleResult(title=self._complete(request, title_prompt(request), title=True))
 
+    def extract_content(self, request: ProviderContentRequest) -> str:
+        return self._complete(request, CONTENT_SYSTEM_PROMPT, max_tokens=8_192)
+
     def _complete(
         self,
-        request: ProviderAnnotationRequest | ProviderTitleRequest,
+        request: ProviderAnnotationRequest | ProviderTitleRequest | ProviderContentRequest,
         system_prompt: str,
         *,
         title: bool = False,
+        max_tokens: int = 240,
     ) -> str:
         model = resolve_model(request.params, self._model)
+        content_request = isinstance(request, ProviderContentRequest)
+        failure_type = ContentExtractionFailedError if content_request else AnnotationFailedError
+        timeout_type = ContentExtractionTimeoutError if content_request else AnnotationTimeoutError
         payload = {
             "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": request.text},
             ],
-            "max_tokens": 240,
+            "max_tokens": max_tokens,
             "chat_template_kwargs": {"enable_thinking": False},
             # Lower variance for short factual outputs; Qwen3 non-thinking top/min sampling.
             "temperature": 0.2,
@@ -111,7 +125,7 @@ class QwenLocalProvider:
             "top_k": 20,
             "min_p": 0,
         }
-        if not title:
+        if isinstance(request, ProviderAnnotationRequest):
             payload["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
@@ -129,6 +143,20 @@ class QwenLocalProvider:
                     },
                 },
             }
+        elif isinstance(request, ProviderContentRequest):
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "content_selection",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {"discard": {"type": "array", "items": {"type": "integer"}}},
+                        "required": ["discard"],
+                        "additionalProperties": False,
+                    },
+                },
+            }
         try:
             with httpx.Client(
                 timeout=self._timeout_seconds,
@@ -141,21 +169,28 @@ class QwenLocalProvider:
             if response.status_code in (400, 404) and "model" in request.params:
                 raise InvalidAnnotatorParamsError(details={"parameter": "model"})
             if response.status_code != 200:
-                raise AnnotationFailedError(details={"annotator": self.name})
+                raise failure_type(details={"annotator": self.name})
             choice = response.json()["choices"][0]
             if choice.get("finish_reason") == "length":
                 if title:
                     raise InvalidTitleError()
-                raise AnnotationFailedError(details={"annotator": self.name})
+                if isinstance(request, ProviderAnnotationRequest):
+                    raise IncompleteAnnotationError(details={"annotator": self.name})
+                raise failure_type(details={"annotator": self.name})
+            if isinstance(request, ProviderContentRequest) and choice.get("finish_reason") not in (
+                None,
+                "stop",
+            ):
+                raise failure_type(details={"annotator": self.name})
             content = choice["message"]["content"]
             if not isinstance(content, str):
                 raise ValueError("empty content")
             return content
         except httpx.TimeoutException:
-            raise AnnotationTimeoutError(details={"annotator": self.name}) from None
+            raise timeout_type(details={"annotator": self.name}) from None
         except httpx.RequestError:
             raise AnnotatorUnavailableError(details={"annotator": self.name}) from None
         except (AttributeError, KeyError, IndexError, TypeError, ValueError):
             if title:
                 raise InvalidTitleError() from None
-            raise AnnotationFailedError(details={"annotator": self.name}) from None
+            raise failure_type(details={"annotator": self.name}) from None

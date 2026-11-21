@@ -110,6 +110,18 @@ class ContentNotExtractableError(ApplicationError):
     default_message = "Content has no extractable text"
 
 
+class ContentExtractionFailedError(ApplicationError):
+    code = "content_extraction_failed"
+    status_code = 502
+    default_message = "Content extraction failed"
+
+
+class ContentExtractionTimeoutError(ApplicationError):
+    code = "content_extraction_timeout"
+    status_code = 504
+    default_message = "Content extraction timed out"
+
+
 class InvalidAnnotatorParamsError(ApplicationError):
     code = "invalid_annotator_params"
     status_code = 422
@@ -132,6 +144,10 @@ class AnnotationFailedError(ApplicationError):
     code = "annotation_failed"
     status_code = 502
     default_message = "Annotation failed"
+
+
+class IncompleteAnnotationError(AnnotationFailedError):
+    pass
 
 
 class AnnotatorUnavailableError(ApplicationError):

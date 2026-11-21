@@ -64,7 +64,9 @@ async def test_iishko_health_checks_real_annotation_path_once(
             group.start_soon(check)
         await check()
 
-    [request] = requests
+    expected_requests = 2 if upstream_status == 200 and expected_status == 503 else 1
+    assert len(requests) == expected_requests
+    request = requests[0]
     assert request.url.path == "/v1/chat/completions"
     assert request.headers["Authorization"] == "Bearer test-key"
     payload = json.loads(request.content)

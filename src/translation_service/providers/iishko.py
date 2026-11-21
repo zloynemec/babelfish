@@ -4,6 +4,9 @@ from translation_service.core.errors import (
     AnnotationFailedError,
     AnnotationTimeoutError,
     AnnotatorUnavailableError,
+    ContentExtractionFailedError,
+    ContentExtractionTimeoutError,
+    IncompleteAnnotationError,
     InvalidAnnotatorParamsError,
     InvalidTitleError,
     InvalidTranslatorParamsError,
@@ -16,6 +19,7 @@ from translation_service.domain.annotation import (
     ProviderAnnotationRequest,
     ProviderAnnotationResult,
 )
+from translation_service.domain.content import ProviderContentRequest
 from translation_service.domain.models import (
     ProviderCapabilities,
     ProviderHealth,
@@ -23,7 +27,11 @@ from translation_service.domain.models import (
     ProviderTranslationResult,
 )
 from translation_service.domain.title import ProviderTitleRequest, ProviderTitleResult
-from translation_service.providers.annotation_prompt import ANNOTATION_SYSTEM_PROMPT
+from translation_service.providers.annotation_prompt import (
+    ANNOTATION_SYSTEM_PROMPT,
+    annotation_language_instruction,
+)
+from translation_service.providers.content_prompt import CONTENT_SYSTEM_PROMPT
 from translation_service.providers.model_params import resolve_model
 from translation_service.providers.title_prompt import title_prompt
 
@@ -50,7 +58,13 @@ class IishkoProvider:
         return AnnotatorHealth(ready=bool(self._api_key))
 
     def annotate(self, request: ProviderAnnotationRequest) -> ProviderAnnotationResult:
-        content = self._complete(request, ANNOTATION_SYSTEM_PROMPT)
+        prompt = ANNOTATION_SYSTEM_PROMPT + annotation_language_instruction(request)
+        if request.format_violation:
+            prompt += (
+                f" Previous answer was invalid: {request.format_violation}. "
+                "Write exactly two brief, complete sentences."
+            )
+        content = self._complete(request, prompt, max_tokens=384)
         if not content.strip():
             raise AnnotationFailedError(details={"annotator": self.name})
         return ProviderAnnotationResult(annotation=content.strip())
@@ -58,9 +72,17 @@ class IishkoProvider:
     def title(self, request: ProviderTitleRequest) -> ProviderTitleResult:
         return ProviderTitleResult(title=self._complete(request, title_prompt(request), title=True))
 
+    def extract_content(self, request: ProviderContentRequest) -> str:
+        return self._complete(request, CONTENT_SYSTEM_PROMPT, max_tokens=8_192)
+
     def _complete(
         self,
-        request: ProviderAnnotationRequest | ProviderTitleRequest | ProviderTranslationRequest,
+        request: (
+            ProviderAnnotationRequest
+            | ProviderTitleRequest
+            | ProviderTranslationRequest
+            | ProviderContentRequest
+        ),
         system_prompt: str,
         *,
         title: bool = False,
@@ -68,6 +90,9 @@ class IishkoProvider:
         timeout_seconds: float | None = None,
     ) -> str:
         model = resolve_model(request.params, self._model)
+        content_request = isinstance(request, ProviderContentRequest)
+        failure_type = ContentExtractionFailedError if content_request else AnnotationFailedError
+        timeout_type = ContentExtractionTimeoutError if content_request else AnnotationTimeoutError
         if not self._api_key:
             raise AnnotatorUnavailableError(details={"annotator": self.name})
 
@@ -107,27 +132,32 @@ class IishkoProvider:
             if response.status_code in (400, 404) and "model" in request.params:
                 raise InvalidAnnotatorParamsError(details={"parameter": "model"})
             if response.status_code != 200:
-                raise AnnotationFailedError(details={"annotator": self.name})
+                raise failure_type(details={"annotator": self.name})
             body = response.json()
             choice = body["choices"][0]
             if title and choice.get("finish_reason") == "length":
                 raise InvalidTitleError()
-            if isinstance(request, ProviderTranslationRequest) and choice.get(
-                "finish_reason"
-            ) not in (None, "stop"):
-                raise AnnotationFailedError(details={"annotator": self.name})
+            if (
+                isinstance(request, ProviderAnnotationRequest)
+                and choice.get("finish_reason") == "length"
+            ):
+                raise IncompleteAnnotationError(details={"annotator": self.name})
+            if isinstance(
+                request, (ProviderTranslationRequest, ProviderContentRequest)
+            ) and choice.get("finish_reason") not in (None, "stop"):
+                raise failure_type(details={"annotator": self.name})
             content = choice["message"]["content"]
             if not isinstance(content, str):
                 raise ValueError("empty content")
             return content
         except httpx.TimeoutException:
-            raise AnnotationTimeoutError(details={"annotator": self.name}) from None
+            raise timeout_type(details={"annotator": self.name}) from None
         except httpx.RequestError:
             raise AnnotatorUnavailableError(details={"annotator": self.name}) from None
         except (AttributeError, KeyError, IndexError, TypeError, ValueError):
             if title:
                 raise InvalidTitleError() from None
-            raise AnnotationFailedError(details={"annotator": self.name}) from None
+            raise failure_type(details={"annotator": self.name}) from None
 
 
 class IishkoTranslatorProvider:
