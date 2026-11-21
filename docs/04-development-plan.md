@@ -17,7 +17,7 @@
 - [x] реализовать `FakeTranslatorProvider` только для tests/dev;
 - [x] реализовать `POST /v1/translate`;
 - [x] реализовать `GET /v1/translators`;
-- [x] реализовать `/health/live` и `/health/ready`;
+- [x] реализовать единый `/health`;
 - [x] реализовать единый error envelope;
 - [x] покрыть API contract тестами;
 - [x] сверить реализацию с `openapi.yaml`.

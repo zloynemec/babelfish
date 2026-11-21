@@ -475,7 +475,7 @@ async def test_title_and_annotation_share_worker_capacity() -> None:
                 response = await client.post("/v1/annotate", json={"text": "material"})
                 assert response.status_code == 504
                 assert response.json()["error"]["code"] == "annotation_timeout"
-                live = await client.get("/health/live")
+                live = await client.get("/openapi.json")
                 assert live.status_code == 200
         finally:
             release.set()

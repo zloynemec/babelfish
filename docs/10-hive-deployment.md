@@ -120,8 +120,8 @@ Default `iishko` сохраняется; для локальной генера�
 поля выбора provider/model. Оба метода сохраняют преобладающий язык входного текста. CPU-генерация зависит от
 размера входа; применяются существующие таймауты 90/100 секунд. Длинные входы
 могут не уложиться в них. `annotator_params.model` не загружает новые веса.
-Готовность модели показывается в `/v1/annotators`; `/health/ready` по-прежнему
-проверяет default переводчик.
+Готовность модели показывается в `/v1/annotators`; `/health` включает
+отдельный результат для переводчика по умолчанию.
 
 [Официальный Docker-образ llama.cpp](https://github.com/ggml-org/llama.cpp/blob/master/docs/docker.md),
 [флаги сервера](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md).
@@ -138,15 +138,15 @@ docker --context babelfish-hive compose --env-file .env.prod \
 
 Контейнер запускается от UID/GID `10001:10001`, с read-only файловой системой;
 запись разрешена в `/data` и временный `/tmp`. Docker healthcheck проверяет
-`/health/live`, поэтому API может стартовать без моделей. В таком состоянии
-`/health/ready` и `/v1/translate` возвращают `503 translator_unavailable`.
+`/openapi.json`, поэтому API может стартовать без моделей. В таком состоянии
+`/health` возвращает `503 not_ready` со всеми результатами проверок,
+а `/v1/translate` возвращает `503 translator_unavailable`.
 Traefik не использует readiness как условие публикации.
 
 ## Проверка HTTPS
 
 ```bash
-curl --fail https://babelfish.linktool.ru/health/live
-curl --fail https://babelfish.linktool.ru/health/ready
+curl --fail-with-body https://babelfish.linktool.ru/health
 curl --fail https://babelfish.linktool.ru/v1/translators
 curl --fail https://babelfish.linktool.ru/v1/translate \
   -H 'Content-Type: application/json' \
@@ -155,12 +155,6 @@ curl --fail https://babelfish.linktool.ru/v1/translate \
 
 Документация API: <https://babelfish.linktool.ru/docs>.
 TLS-сертификат выпускает существующий Traefik после настройки DNS.
-
-Для отдельной проверки аннотирования через Iishko:
-
-```bash
-curl --fail-with-body https://babelfish.linktool.ru/health/iishko
-```
 
 ## Обновление и диагностика
 

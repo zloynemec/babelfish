@@ -16,6 +16,7 @@ def settings() -> Settings:
         default_source_language="en",
         max_text_length=20,
         translation_timeout_seconds=0.05,
+        iishko_api_key=None,
     )
 
 

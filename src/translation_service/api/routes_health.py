@@ -1,7 +1,7 @@
 from typing import Annotated
 
 import anyio
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from translation_service.api.dependencies import (
     get_iishko_health,
@@ -9,9 +9,8 @@ from translation_service.api.dependencies import (
     get_settings,
     get_workers,
 )
-from translation_service.api.models import ERROR_RESPONSES, LiveResponse, ReadyResponse
+from translation_service.api.models import HealthChecks, HealthResponse, TranslatorHealth
 from translation_service.core.config import Settings
-from translation_service.core.errors import AnnotatorUnavailableError, TranslatorUnavailableError
 from translation_service.core.workers import WorkerPool
 from translation_service.services.iishko_health import IishkoHealthCheck
 from translation_service.services.registry import TranslatorRegistry
@@ -20,54 +19,51 @@ router = APIRouter(tags=["health"])
 
 
 @router.get(
-    "/health/live",
-    response_model=LiveResponse,
-    summary="Liveness probe",
-    operation_id="healthLive",
+    "/health",
+    response_model=HealthResponse,
+    responses={503: {"model": HealthResponse, "description": "Default translator is unavailable"}},
+    summary="Check service health",
+    description=(
+        "Reports liveness, default translator readiness, and a cached Iishko annotation probe. "
+        "If only Iishko fails, the status is degraded and the HTTP response is 200. "
+        "If the default translator fails, the HTTP response is 503 with all check results."
+    ),
+    operation_id="health",
 )
-async def health_live() -> LiveResponse:
-    return LiveResponse(status="ok")
-
-
-@router.get(
-    "/health/ready",
-    response_model=ReadyResponse,
-    responses={503: ERROR_RESPONSES[503]},
-    summary="Readiness probe",
-    operation_id="healthReady",
-)
-async def health_ready(
+async def health(
+    response: Response,
     registry: Annotated[TranslatorRegistry, Depends(get_registry)],
     settings: Annotated[Settings, Depends(get_settings)],
     workers: Annotated[WorkerPool, Depends(get_workers)],
-) -> ReadyResponse:
-    try:
-        provider = registry.get(settings.default_translator)
-        with anyio.fail_after(settings.translation_timeout_seconds):
-            ready = (await workers.run(provider.health)).ready
-    except Exception:
-        ready = False
+    iishko: Annotated[IishkoHealthCheck, Depends(get_iishko_health)],
+) -> HealthResponse:
+    translator_ready = False
+    iishko_ready = False
 
-    if not ready:
-        raise TranslatorUnavailableError(
-            "Default translator is not ready",
-            details={"translator": settings.default_translator},
-        )
+    async def check_translator() -> None:
+        nonlocal translator_ready
+        try:
+            provider = registry.get(settings.default_translator)
+            with anyio.fail_after(settings.translation_timeout_seconds):
+                translator_ready = (await workers.run(provider.health)).ready
+        except Exception:
+            translator_ready = False
 
-    return ReadyResponse(status="ready", default_translator=settings.default_translator)
+    async def check_iishko() -> None:
+        nonlocal iishko_ready
+        iishko_ready = await iishko.is_healthy()
 
+    async with anyio.create_task_group() as group:
+        group.start_soon(check_translator)
+        group.start_soon(check_iishko)
 
-@router.get(
-    "/health/iishko",
-    response_model=LiveResponse,
-    responses={503: ERROR_RESPONSES[503]},
-    summary="Iishko annotation probe",
-    operation_id="healthIishko",
-)
-async def health_iishko(
-    check: Annotated[IishkoHealthCheck, Depends(get_iishko_health)],
-) -> LiveResponse:
-    if not await check.is_healthy():
-        raise AnnotatorUnavailableError(details={"annotator": "iishko"})
-
-    return LiveResponse(status="ok")
+    if not translator_ready:
+        response.status_code = 503
+    return HealthResponse(
+        status=("ok" if iishko_ready else "degraded") if translator_ready else "not_ready",
+        checks=HealthChecks(
+            live=True,
+            translator=TranslatorHealth(name=settings.default_translator, ready=translator_ready),
+            iishko=iishko_ready,
+        ),
+    )

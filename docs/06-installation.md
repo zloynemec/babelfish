@@ -116,8 +116,7 @@ uvicorn translation_service.main:app --host 0.0.0.0 --port 8000
 Проверка:
 
 ```bash
-curl http://localhost:8000/health/live
-curl http://localhost:8000/health/ready
+curl http://localhost:8000/health
 curl -X POST http://localhost:8000/v1/translate \
   -H 'Content-Type: application/json' \
   -d '{"text":"Hello world","target_language":"ru"}'

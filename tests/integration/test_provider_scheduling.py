@@ -19,7 +19,7 @@ from translation_service.services.registry import TranslatorRegistry
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("path", ["/health/ready", "/v1/translators", "/v1/annotators"])
+@pytest.mark.parametrize("path", ["/health", "/v1/translators", "/v1/annotators"])
 async def test_slow_health_does_not_block_liveness(path: str) -> None:
     started = Event()
     release = Event()
@@ -35,7 +35,9 @@ async def test_slow_health_does_not_block_liveness(path: str) -> None:
 
     registry = TranslatorRegistry()
     registry.register(SlowProvider())
-    app = create_app(settings=Settings(default_translator="fake"), registry=registry)
+    app = create_app(
+        settings=Settings(default_translator="fake", iishko_api_key=None), registry=registry
+    )
     if path == "/v1/annotators":
         annotators = AnnotatorRegistry()
         annotators.register(SlowProvider())
@@ -52,7 +54,7 @@ async def test_slow_health_does_not_block_liveness(path: str) -> None:
                 with anyio.fail_after(1):
                     while not started.is_set():
                         await anyio.sleep(0.001)
-                    response = await client.get("/health/live")
+                    response = await client.get("/openapi.json")
                     assert response.status_code == 200
                     assert not release.is_set()
             finally:

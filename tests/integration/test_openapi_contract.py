@@ -79,12 +79,17 @@ def test_generated_openapi_contains_documented_contract() -> None:
         "metadata",
     }
 
-    live_schema = schema["components"]["schemas"]["LiveResponse"]
-    ready_schema = schema["components"]["schemas"]["ReadyResponse"]
-    assert live_schema["required"] == ["status"]
-    assert live_schema["properties"]["status"]["const"] == "ok"
-    assert set(ready_schema["required"]) == {"status", "default_translator"}
-    assert ready_schema["properties"]["status"]["const"] == "ready"
+    health = schema["paths"]["/health"]["get"]
+    health_schema = schema["components"]["schemas"]["HealthResponse"]
+    checks_schema = schema["components"]["schemas"]["HealthChecks"]
+    assert health["description"] == documented["paths"]["/health"]["get"]["description"]
+    for status_code in ("200", "503"):
+        assert health["responses"][status_code]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/HealthResponse"
+        }
+    assert health_schema["required"] == ["status", "checks"]
+    assert health_schema["properties"]["status"]["enum"] == ["ok", "degraded", "not_ready"]
+    assert set(checks_schema["required"]) == {"live", "translator", "iishko"}
 
 
 def test_title_schema_matches_documented_limits_and_response_fields() -> None:

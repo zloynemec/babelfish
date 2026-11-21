@@ -242,30 +242,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TranslatorListResponse'
-  /health/live:
+  /health:
     get:
       tags: [health]
-      summary: Liveness probe
-      operationId: healthLive
-      responses:
-        '413':
-          $ref: '#/components/responses/Error413'
-        '200':
-          description: Process is alive
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [status]
-                properties:
-                  status:
-                    type: string
-                    const: ok
-  /health/ready:
-    get:
-      tags: [health]
-      summary: Readiness probe
-      operationId: healthReady
+      summary: Check service health
+      operationId: health
+      description: >-
+        Reports liveness, default translator readiness, and a cached Iishko annotation probe.
+        If only Iishko fails, the status is degraded and the HTTP response is 200.
+        If the default translator fails, the HTTP response is 503 with all check results.
       responses:
         '413':
           $ref: '#/components/responses/Error413'
@@ -274,47 +259,37 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required: [status, default_translator]
-                properties:
-                  status:
-                    type: string
-                    const: ready
-                  default_translator:
-                    type: string
+                $ref: '#/components/schemas/HealthResponse'
         '503':
-          $ref: '#/components/responses/Error503'
-  /health/iishko:
-    get:
-      tags: [health]
-      summary: Iishko annotation probe
-      operationId: healthIishko
-      description: >
-        Runs a synthetic annotation through the configured Iishko provider.
-        The probe waits up to 10 seconds and caches successes and failures for
-        60 seconds per application process.
-      responses:
-        '413':
-          $ref: '#/components/responses/Error413'
-        '200':
-          description: Iishko produced a valid test annotation
+          description: Default translator is unavailable
           content:
             application/json:
               schema:
-                type: object
-                required: [status]
-                properties:
-                  status:
-                    type: string
-                    const: ok
-        '503':
-          description: Iishko probe failed or timed out (annotator_unavailable)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
+                $ref: '#/components/schemas/HealthResponse'
 components:
   schemas:
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, not_ready]
+        checks:
+          type: object
+          additionalProperties: false
+          required: [live, translator, iishko]
+          properties:
+            live: {type: boolean, const: true}
+            translator:
+              type: object
+              additionalProperties: false
+              required: [name, ready]
+              properties:
+                name: {type: string}
+                ready: {type: boolean}
+            iishko: {type: boolean}
     TitleRequest:
       type: object
       additionalProperties: false

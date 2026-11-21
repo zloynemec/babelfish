@@ -60,6 +60,6 @@ compose run --rm --no-deps babelfish python scripts/install_argos_model.py --fro
 echo "Starting BabelFish..."
 compose up -d --wait --wait-timeout 240 babelfish
 compose exec -T babelfish python -c \
-  "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=30).close()"
+  "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=30).close()"
 compose ps
 echo "Deployment complete. Check the HTTPS endpoints described in docs/10-hive-deployment.md."

@@ -66,13 +66,20 @@ class TranslatorListResponse(StrictModel):
     default_translator: str
 
 
-class LiveResponse(StrictModel):
-    status: Literal["ok"]
+class TranslatorHealth(StrictModel):
+    name: str
+    ready: bool
 
 
-class ReadyResponse(StrictModel):
-    status: Literal["ready"]
-    default_translator: str
+class HealthChecks(StrictModel):
+    live: Literal[True]
+    translator: TranslatorHealth
+    iishko: bool
+
+
+class HealthResponse(StrictModel):
+    status: Literal["ok", "degraded", "not_ready"]
+    checks: HealthChecks
 
 
 class ErrorBody(StrictModel):

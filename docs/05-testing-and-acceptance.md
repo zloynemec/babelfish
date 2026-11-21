@@ -128,15 +128,15 @@ Request:
 
 ### T-011 Liveness without model
 
-`/health/live` возвращает 200 даже если Argos model отсутствует.
+При отсутствии модели Argos `/health` включает `checks.live: true`.
 
 ### T-012 Readiness without model
 
-`/health/ready` возвращает 503, если default provider не готов.
+`/health` возвращает 503 с результатами всех проверок, если переводчик по умолчанию не готов.
 
 ### Проверка Iishko
 
-Тесты `/health/iishko` используют `httpx.MockTransport` и покрывают успешную
+Тесты проверки Iishko через `/health` используют `httpx.MockTransport` и покрывают успешную
 аннотацию, некорректный ответ, ошибку провайдера, отсутствие провайдера и
 повторное использование результата при параллельном опросе.
 
@@ -217,8 +217,7 @@ runtime-загрузки в production.
 MVP считается готовым, когда одновременно выполняются условия:
 
 - [ ] сервис стартует локально;
-- [ ] `/health/live` работает;
-- [ ] `/health/ready` корректно отражает наличие default translator model;
+- [ ] `/health` отражает доступность приложения, наличие модели переводчика и готовность Iishko;
 - [ ] минимальный request требует только `text` и `target_language`;
 - [ ] default source = `en` конфигурируем;
 - [ ] default translator = `argos` конфигурируем;

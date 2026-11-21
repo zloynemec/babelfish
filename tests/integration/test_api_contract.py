@@ -180,22 +180,18 @@ async def test_timeout(settings: Settings) -> None:
 
 
 @pytest.mark.anyio
-async def test_liveness_succeeds_without_provider() -> None:
-    transport = httpx.ASGITransport(app=create_app(registry=TranslatorRegistry()))
+async def test_health_reports_all_checks_without_default_provider(settings: Settings) -> None:
+    transport = httpx.ASGITransport(
+        app=create_app(settings=settings, registry=TranslatorRegistry())
+    )
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/health/live")
+        response = await client.get("/health")
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
-
-
-@pytest.mark.anyio
-async def test_readiness_fails_without_default_provider() -> None:
-    transport = httpx.ASGITransport(app=create_app(registry=TranslatorRegistry()))
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/health/ready")
-
-    assert_error(response, 503, "translator_unavailable")
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "checks": {"live": True, "translator": {"name": "fake", "ready": False}, "iishko": False},
+    }
 
 
 @pytest.mark.anyio
@@ -317,11 +313,14 @@ async def test_iishko_translation(
 async def test_readiness_and_translator_list(
     client: httpx.AsyncClient,
 ) -> None:
-    ready = await client.get("/health/ready")
+    ready = await client.get("/health")
     translators = await client.get("/v1/translators")
 
     assert ready.status_code == 200
-    assert ready.json() == {"status": "ready", "default_translator": "fake"}
+    assert ready.json() == {
+        "status": "degraded",
+        "checks": {"live": True, "translator": {"name": "fake", "ready": True}, "iishko": False},
+    }
     assert translators.status_code == 200
     assert translators.json() == {
         "translators": [
@@ -363,7 +362,10 @@ async def test_invalid_requests_use_common_error_envelope(
     [
         ("GET", "/nonexistent", 404, "not_found", None),
         ("GET", "/v1/translate", 405, "method_not_allowed", "POST"),
-        ("POST", "/health/live", 405, "method_not_allowed", "GET"),
+        ("POST", "/health", 405, "method_not_allowed", "GET"),
+        ("GET", "/health/live", 404, "not_found", None),
+        ("GET", "/health/ready", 404, "not_found", None),
+        ("GET", "/health/iishko", 404, "not_found", None),
     ],
 )
 async def test_routing_errors_use_common_error_envelope(

@@ -124,7 +124,7 @@ async def test_slow_translator_health_does_not_delay_http_liveness() -> None:
             try:
                 await wait_for_event(started)
                 with anyio.fail_after(0.5):
-                    response = await client.get("/health/live")
+                    response = await client.get("/openapi.json")
                 assert response.status_code == 200
                 assert not finished.is_set()
             finally:
