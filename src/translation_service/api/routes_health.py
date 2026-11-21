@@ -35,7 +35,7 @@ router = APIRouter(tags=["health"])
     summary="Check service health",
     description=(
         "Reports liveness, readiness for every registered translator and annotator, "
-        "and a cached Iishko annotation probe. "
+        "and a cached authenticated Iishko API check. "
         "If the default translator is ready but the Iishko probe fails, the response is 200 "
         "with status degraded. "
         "If the default translator fails, the HTTP response is 503 with all check results."
@@ -82,7 +82,7 @@ async def health(
             )
         group.start_soon(check_iishko)
         for name, translator in translators.items():
-            if name != default:
+            if name not in {default, "iishko"}:
                 group.start_soon(check_provider, translator_states, name, translator.health)
         for name, annotator in annotators.items():
             if name != "iishko":
@@ -90,6 +90,8 @@ async def health(
 
     if "iishko" in annotator_states:
         annotator_states["iishko"] = iishko_ready
+    if "iishko" in translator_states:
+        translator_states["iishko"] = iishko_ready
     translator_ready = translator_states.get(default, False)
 
     if not translator_ready:

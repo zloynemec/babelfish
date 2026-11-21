@@ -1,5 +1,3 @@
-import json
-
 import anyio
 import httpx
 import pytest
@@ -16,27 +14,24 @@ from translation_service.services.registry import TranslatorRegistry
 @pytest.mark.anyio
 @pytest.mark.parametrize("translator_ready", [True, False])
 @pytest.mark.parametrize(
-    ("upstream_status", "annotation", "iishko_ready", "expected_requests"),
+    ("upstream_status", "upstream_body", "iishko_ready"),
     [
-        (200, "The Moon orbits Earth. Its phases change.", True, 1),
-        (200, "Incomplete", False, 2),
-        (401, "", False, 1),
+        (200, {"data": [{"id": "test-model"}]}, True),
+        (200, {"unexpected": []}, False),
+        (401, {"error": {}}, False),
     ],
 )
-async def test_iishko_health_checks_real_annotation_path_once(
+async def test_iishko_health_queries_authenticated_model_list_once(
     upstream_status: int,
-    annotation: str,
+    upstream_body: dict[str, object],
     iishko_ready: bool,
-    expected_requests: int,
     translator_ready: bool,
 ) -> None:
     requests: list[httpx.Request] = []
 
     def upstream(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        return httpx.Response(
-            upstream_status, json={"choices": [{"message": {"content": annotation}}]}
-        )
+        return httpx.Response(upstream_status, json=upstream_body)
 
     registry = AnnotatorRegistry()
     registry.register(
@@ -85,7 +80,7 @@ async def test_iishko_health_checks_real_annotation_path_once(
                     "translators": [
                         {"name": "fake", "ready": translator_ready},
                         {"name": "marian", "ready": False},
-                        {"name": "iishko", "ready": True},
+                        {"name": "iishko", "ready": iishko_ready},
                     ],
                     "annotators": [
                         {"name": "iishko", "ready": iishko_ready},
@@ -99,13 +94,11 @@ async def test_iishko_health_checks_real_annotation_path_once(
             group.start_soon(check)
         await check()
 
-    assert len(requests) == expected_requests
-    request = requests[0]
-    assert request.url.path == "/v1/chat/completions"
+    [request] = requests
+    assert request.method == "GET"
+    assert request.url.path == "/v1/models"
     assert request.headers["Authorization"] == "Bearer test-key"
-    payload = json.loads(request.content)
-    assert payload["model"] == "test-model"
-    assert "The Moon orbits Earth" in payload["messages"][1]["content"]
+    assert request.content == b""
 
 
 @pytest.mark.anyio

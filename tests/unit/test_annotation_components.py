@@ -231,6 +231,19 @@ def test_iishko_uses_configured_model_and_does_not_expose_key() -> None:
     assert body["messages"][1]["content"] == "Input text"
 
 
+def test_iishko_api_check_does_not_make_a_request_without_key() -> None:
+    upstream = Mock(side_effect=AssertionError("request without a key"))
+    provider = IishkoProvider(
+        api_key=None,
+        base_url="https://iishko.test/v1",
+        model="test-model",
+        timeout_seconds=1,
+        transport=httpx.MockTransport(upstream),
+    )
+    assert provider.api_available(1) is False
+    upstream.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("status, payload, error_type"),
     [

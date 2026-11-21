@@ -57,6 +57,22 @@ class IishkoProvider:
     def health(self) -> AnnotatorHealth:
         return AnnotatorHealth(ready=bool(self._api_key))
 
+    def api_available(self, timeout_seconds: float) -> bool:
+        if not self._api_key:
+            return False
+        try:
+            with httpx.Client(timeout=timeout_seconds, transport=self._transport) as client:
+                response = client.get(
+                    f"{self._base_url}/models",
+                    headers={"Authorization": f"Bearer {self._api_key}"},
+                )
+            if response.status_code != 200:
+                return False
+            body = response.json()
+            return isinstance(body, dict) and isinstance(body.get("data"), list)
+        except (httpx.RequestError, httpx.InvalidURL, ValueError):
+            return False
+
     def annotate(self, request: ProviderAnnotationRequest) -> ProviderAnnotationResult:
         prompt = ANNOTATION_SYSTEM_PROMPT + annotation_language_instruction(request)
         if request.format_violation:

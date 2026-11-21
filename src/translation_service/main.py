@@ -117,7 +117,15 @@ def create_app(
         else AnnotationService(resolved_annotator_registry, resolved_settings, workers=workers)
     )
     application.state.annotation_service = resolved_annotation_service
-    application.state.iishko_health = IishkoHealthCheck(resolved_annotation_service)
+    iishko_probe = next(
+        (
+            provider.api_available
+            for provider in resolved_annotator_registry.list()
+            if isinstance(provider, IishkoProvider)
+        ),
+        None,
+    )
+    application.state.iishko_health = IishkoHealthCheck(iishko_probe, workers)
     application.state.content_service = ContentService(
         resolved_annotator_registry, resolved_settings, workers=workers
     )

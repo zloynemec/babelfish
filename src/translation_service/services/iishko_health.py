@@ -1,22 +1,24 @@
+from collections.abc import Callable
+from functools import partial
+
 import anyio
 
-from translation_service.services.annotation import AnnotationService
+from translation_service.core.workers import WorkerPool
 
-_PROBE_TEXT = (
-    "The Moon orbits Earth about once every 27 days. "
-    "We see different phases as sunlight illuminates the Moon from different angles."
-)
 _CACHE_SECONDS = 60
 _TIMEOUT_SECONDS = 10
 
 
 class IishkoHealthCheck:
-    def __init__(self, annotation_service: AnnotationService) -> None:
-        self._annotation_service = annotation_service
+    def __init__(self, probe: Callable[[float], bool] | None, workers: WorkerPool) -> None:
+        self._probe = probe
+        self._workers = workers
         self._lock = anyio.Lock()
         self._result: tuple[float, bool] | None = None
 
     async def is_healthy(self) -> bool:
+        if self._probe is None:
+            return False
         async with self._lock:
             result = self._result
             if result is not None and anyio.current_time() < result[0]:
@@ -24,11 +26,9 @@ class IishkoHealthCheck:
 
             try:
                 with anyio.fail_after(_TIMEOUT_SECONDS):
-                    await self._annotation_service.annotate(text=_PROBE_TEXT, annotator="iishko")
-            except Exception:
+                    healthy = await self._workers.run(partial(self._probe, _TIMEOUT_SECONDS))
+            except TimeoutError:
                 healthy = False
-            else:
-                healthy = True
 
             self._result = (anyio.current_time() + _CACHE_SECONDS, healthy)
             return healthy

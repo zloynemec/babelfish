@@ -249,7 +249,7 @@ paths:
       operationId: health
       description: >-
         Reports liveness, readiness for every registered translator and annotator,
-        and a cached Iishko annotation probe.
+        and a cached authenticated Iishko API check.
         If the default translator is ready but the Iishko probe fails, the response is 200
         with status degraded.
         If the default translator fails, the HTTP response is 503 with all check results.
