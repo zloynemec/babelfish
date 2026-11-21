@@ -101,5 +101,5 @@ Before finishing, run the full test suite and check that the generated FastAPI O
 ```text
 Implement Phase 2 from docs/04-development-plan.md by adding an Argos Translate provider behind the existing TranslatorProvider abstraction.
 Do not change the public /v1/translate contract.
-Translation inference must be local and user text must never be sent to an external service. Runtime downloads of public models and support files are allowed. Add an explicit model-installation script for en -> ru and make readiness false when the required translation model is absent.
+Argos and Marian inference must be local. Only explicit selection of Iishko permits sending translation text to its external API. Runtime downloads of public models and support files are allowed. Add an explicit model-installation script for en -> ru and make readiness false when the required translation model is absent.
 ```

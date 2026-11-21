@@ -30,7 +30,7 @@ from translation_service.core.errors import (
 )
 from translation_service.core.workers import WorkerPool
 from translation_service.providers.argos import ArgosProvider
-from translation_service.providers.iishko import IishkoProvider
+from translation_service.providers.iishko import IishkoProvider, IishkoTranslatorProvider
 from translation_service.providers.marian import MarianProvider
 from translation_service.providers.qwen_local import QwenLocalProvider
 from translation_service.services.annotation import AnnotationService
@@ -51,6 +51,16 @@ def create_app(
     annotation_service: AnnotationService | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings()
+    iishko = IishkoProvider(
+        api_key=(
+            resolved_settings.iishko_api_key.get_secret_value()
+            if resolved_settings.iishko_api_key is not None
+            else None
+        ),
+        base_url=resolved_settings.iishko_base_url,
+        model=resolved_settings.iishko_model,
+        timeout_seconds=resolved_settings.annotation_provider_timeout_seconds,
+    )
     if registry is None:
         resolved_registry = TranslatorRegistry()
         resolved_registry.register(ArgosProvider())
@@ -61,23 +71,17 @@ def create_app(
                 compute_type=resolved_settings.marian_compute_type,
             )
         )
+        resolved_registry.register(
+            IishkoTranslatorProvider(
+                iishko, timeout_seconds=resolved_settings.translation_timeout_seconds
+            )
+        )
     else:
         resolved_registry = registry
 
     resolved_annotator_registry = annotator_registry or AnnotatorRegistry()
     if annotator_registry is None:
-        resolved_annotator_registry.register(
-            IishkoProvider(
-                api_key=(
-                    resolved_settings.iishko_api_key.get_secret_value()
-                    if resolved_settings.iishko_api_key is not None
-                    else None
-                ),
-                base_url=resolved_settings.iishko_base_url,
-                model=resolved_settings.iishko_model,
-                timeout_seconds=resolved_settings.annotation_provider_timeout_seconds,
-            )
-        )
+        resolved_annotator_registry.register(iishko)
         resolved_annotator_registry.register(
             QwenLocalProvider(
                 base_url=resolved_settings.qwen_local_base_url,

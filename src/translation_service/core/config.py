@@ -53,6 +53,13 @@ class Settings(BaseSettings):
             raise ValueError("must not be empty")
         return normalized
 
+    @field_validator("default_translator")
+    @classmethod
+    def require_explicit_iishko_selection(cls, value: str) -> str:
+        if value == "iishko":
+            raise ValueError("Iishko must be selected explicitly for each translation")
+        return value
+
     @field_validator("log_level")
     @classmethod
     def normalize_log_level(cls, value: str) -> str:

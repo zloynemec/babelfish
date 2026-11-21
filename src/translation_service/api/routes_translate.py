@@ -14,6 +14,11 @@ router = APIRouter(prefix="/v1", tags=["translation"])
     response_model=TranslateResponse,
     responses=ERROR_RESPONSES,
     summary="Translate text",
+    description=(
+        "Translate text from the source language to the target language. "
+        "Argos and Marian process text locally. Sending `translator: iishko` sends the text "
+        "to Iishko using the service's configured model. Iishko accepts no translator parameters."
+    ),
     operation_id="translateText",
 )
 async def translate_text(

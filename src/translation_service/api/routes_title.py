@@ -16,7 +16,7 @@ router = APIRouter(prefix="/v1", tags=["title"])
     summary="Generate a title",
     description=(
         "Send the source as plain `text` (up to 30,000 characters). The selected annotator "
-        "(Iishko by default) receives the full text and generates one informative title "
+        "receives the full text and generates one informative title "
         "in the predominant language of the source. The title must be a single line "
         "of up to 120 characters without markup or surrounding quotes. "
         "The service retries once if the title fails format validation."

@@ -19,8 +19,9 @@ HTTP route -> AnnotationService -> ContentPreparer -> AnnotatorRegistry
 `AnnotationService` подготавливает содержимое и вызывает provider; `IishkoProvider`
 отвечает за внешний API модели, `QwenLocalProvider` — за локальный llama.cpp сервер.
 Реестр аннотаторов отделён от реестра
-переводчиков. Текст из `/v1/annotate` и `/v1/title` разрешено отправлять внешнему provider;
-ограничение локального inference для `/v1/translate` сохраняется.
+переводчиков. `IishkoTranslatorProvider` использует тот же клиент Iishko с заданием
+на перевод и возвращает ошибки контракта перевода. Он отправляет текст
+`/v1/translate` только при явном выборе Iishko.
 
 ```text
 Consumer

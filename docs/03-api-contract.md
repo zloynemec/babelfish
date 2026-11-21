@@ -180,6 +180,14 @@ worker, проверку готовности и обе попытки. Сете
 
 Перевод текста.
 
+При `"translator": "iishko"` исходный текст отправляется внешнему API Iishko.
+Модель, адрес и ключ берутся из `IISHKO_MODEL`, `IISHKO_BASE_URL` и
+`IISHKO_API_KEY`. Iishko выбирается на уровне запроса. Непустой
+`translator_params` возвращает `422 invalid_translator_params`. При недоступности
+провайдера возвращается `503 translator_unavailable`, при таймауте —
+`504 translation_timeout`, при пустом или неполном результате —
+`500 translation_failed`.
+
 ### Минимальный request
 
 ```json

@@ -18,7 +18,7 @@ paths:
       operationId: generateTitle
       description: >-
         Send the source as plain `text` (up to 30,000 characters). The selected annotator
-        (Iishko by default) receives the full text and generates one informative title
+        receives the full text and generates one informative title
         in the predominant language of the source. The title must be a single line
         of up to 120 characters without markup or surrounding quotes.
         The service retries once if the title fails format validation.
@@ -66,7 +66,7 @@ paths:
       description: >-
         Send exactly one of `url`, `html`, or `text`. The service fetches public URLs
         and extracts readable text from HTML. Plain text goes to the model as supplied.
-        The selected annotator (Iishko by default) summarizes the main points in two
+        The selected annotator summarizes the main points in two
         or three sentences in the predominant language of the source.
         The service checks the sentence count.
         `metadata.truncated` reports whether the extracted input was shortened.
@@ -129,6 +129,10 @@ paths:
     post:
       tags: [translation]
       summary: Translate text
+      description: >-
+        Translate text from the source language to the target language.
+        Argos and Marian process text locally. Sending `translator: iishko` sends the text
+        to Iishko using the service's configured model. Iishko accepts no translator parameters.
       operationId: translateText
       requestBody:
         required: true
@@ -155,6 +159,8 @@ paths:
                   source_language: en
                   translator: marian
                   translator_params: {}
+              iishkoTranslator:
+                value: {text: 'The spacecraft entered orbit.', target_language: ru, translator: iishko}
       responses:
         '200':
           description: Translation completed
